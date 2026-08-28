@@ -1,0 +1,27 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <PublishTrimmed>false</PublishTrimmed>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>打个卡</AssemblyName>
+    <Product>打个卡</Product>
+    <Title>打个卡</Title>
+    <ApplicationIcon>Assets\Dagaka.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\ReminderBanner.jpg" LogicalName="CheckInReminder.Assets.ReminderBanner.jpg" />
+    <EmbeddedResource Include="Assets\EveningConfirm.jpg" LogicalName="CheckInReminder.Assets.EveningConfirm.jpg" />
+  </ItemGroup>
+
+</Project>
