@@ -1,9 +1,15 @@
+using System.Diagnostics;
+
 namespace CheckInReminder;
 
 internal sealed class EveningConfirmForm : Form
 {
     private readonly Action<bool> completed;
-    private readonly Image confirmImage;
+    private readonly AnimationSequence sequence;
+    private readonly PictureBox picture;
+    private readonly System.Windows.Forms.Timer animationTimer;
+    private readonly Stopwatch animationClock = new();
+    private int currentFrame = -1;
     private bool allowClose;
     private bool finished;
 
@@ -16,34 +22,50 @@ internal sealed class EveningConfirmForm : Form
         TopMost = true;
         StartPosition = FormStartPosition.CenterScreen;
         AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(620, 560);
+        ClientSize = new Size(620, 680);
         BackColor = Color.FromArgb(18, 18, 18);
 
-        confirmImage = UiAssets.Load("EveningConfirm.jpg");
-        var picture = new PictureBox
+        sequence = AnimationSequence.Load(
+            "Gate",
+            AnimationCatalog.GateDuration,
+            AnimationCatalog.GateLoops);
+        picture = new PictureBox
         {
-            Image = confirmImage,
+            Image = sequence.Frames[0],
             SizeMode = PictureBoxSizeMode.Zoom,
             Location = new Point(20, 18),
-            Size = new Size(580, 360),
+            Size = new Size(580, 470),
             TabStop = false,
         };
 
         var message = new Label
         {
-            Text = "真的吗，那你为什么不走",
+            Text = ReminderCopy.GateQuestion,
             Font = new Font((SystemFonts.MessageBoxFont ?? Control.DefaultFont).FontFamily, 18, FontStyle.Bold),
             TextAlign = ContentAlignment.MiddleCenter,
             ForeColor = Color.White,
-            Location = new Point(30, 390),
+            Location = new Point(30, 500),
             Size = new Size(560, 58),
         };
-        var trueButton = new Button { Text = "真的", Size = new Size(150, 52), Location = new Point(135, 478) };
-        var falseButton = new Button { Text = "假的", Size = new Size(150, 52), Location = new Point(335, 478) };
+        var trueButton = new Button
+        {
+            Text = ReminderCopy.GateTrue,
+            Size = new Size(150, 52),
+            Location = new Point(135, 598),
+        };
+        var falseButton = new Button
+        {
+            Text = ReminderCopy.GateFalse,
+            Size = new Size(150, 52),
+            Location = new Point(335, 598),
+        };
         UiTheme.StylePrimaryButton(trueButton);
         UiTheme.StyleSecondaryButton(falseButton);
         trueButton.Click += (_, _) => Finish(confirmed: true);
         falseButton.Click += (_, _) => Finish(confirmed: false);
+
+        animationTimer = new System.Windows.Forms.Timer { Interval = 30 };
+        animationTimer.Tick += (_, _) => UpdateAnimation();
 
         Controls.Add(picture);
         Controls.Add(message);
@@ -57,14 +79,20 @@ internal sealed class EveningConfirmForm : Form
                 eventArgs.Cancel = true;
             }
         };
-        Shown += (_, _) => BringForward();
+        Shown += (_, _) =>
+        {
+            animationClock.Restart();
+            animationTimer.Start();
+            BringForward();
+        };
     }
 
     protected override void Dispose(bool disposing)
     {
         if (disposing)
         {
-            confirmImage.Dispose();
+            animationTimer.Dispose();
+            sequence.Dispose();
         }
 
         base.Dispose(disposing);
@@ -95,5 +123,17 @@ internal sealed class EveningConfirmForm : Form
         allowClose = true;
         Close();
         completed(confirmed);
+    }
+
+    private void UpdateAnimation()
+    {
+        var frameIndex = sequence.Timeline.GetFrameIndex(animationClock.Elapsed);
+        if (frameIndex == currentFrame)
+        {
+            return;
+        }
+
+        currentFrame = frameIndex;
+        picture.Image = sequence.Frames[frameIndex];
     }
 }

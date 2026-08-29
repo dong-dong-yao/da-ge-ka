@@ -5,11 +5,6 @@ public static class UiTheme
     public static string ProductName => "打个卡";
     public static string SettingsTitle => "打个卡设置";
 
-    public static int BannerWidth => 400;
-    public static int BannerHeight => 480;
-    public static int BannerImageHeight => 400;
-    public static int BannerButtonTop => 410;
-
     public static Color AccentColor { get; } = Color.FromArgb(255, 205, 32);
     public static Color AccentHoverColor { get; } = Color.FromArgb(255, 220, 82);
     public static Color WarmBackgroundColor { get; } = Color.FromArgb(255, 250, 232);

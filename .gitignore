@@ -7,3 +7,4 @@
 TestResults/
 coverage/
 release/
+.watch-review/

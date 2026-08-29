@@ -1,9 +1,10 @@
 namespace CheckInReminder;
 
-internal enum ReminderKind
+public enum ReminderKind
 {
     Morning,
     Evening,
+    Break,
     Test,
 }
 
@@ -17,6 +18,7 @@ internal sealed class ReminderScheduler : IDisposable
     private AppSettings settings;
     private DateTime? nextMorningDue;
     private DateTime? nextEveningDue;
+    private DateTime? nextBreakDue;
     private bool started;
 
     public ReminderScheduler(
@@ -106,6 +108,20 @@ internal sealed class ReminderScheduler : IDisposable
             }
         }
 
+        if (settings.BreakReminderEnabled && nextBreakDue is { } breakDue && now >= breakDue)
+        {
+            if (ScheduleCalculator.IsInBreakWindow(now, settings.BreakStart, settings.BreakEnd))
+            {
+                requestReminder(ReminderKind.Break);
+            }
+
+            nextBreakDue = ScheduleCalculator.GetNextDailyBreakDue(
+                now,
+                settings.BreakStart,
+                settings.BreakEnd,
+                settings.BreakIntervalMinutes);
+        }
+
         onTick(now);
     }
 
@@ -151,6 +167,25 @@ internal sealed class ReminderScheduler : IDisposable
                 now,
                 settings.EveningStart,
                 settings.EveningIntervalMinutes);
+        }
+
+        if (settings.BreakReminderEnabled)
+        {
+            if (requestImmediate &&
+                ScheduleCalculator.IsAtBreakStartAnchor(now, settings.BreakStart))
+            {
+                requestReminder(ReminderKind.Break);
+            }
+
+            nextBreakDue = ScheduleCalculator.GetNextDailyBreakDue(
+                now,
+                settings.BreakStart,
+                settings.BreakEnd,
+                settings.BreakIntervalMinutes);
+        }
+        else
+        {
+            nextBreakDue = null;
         }
     }
 

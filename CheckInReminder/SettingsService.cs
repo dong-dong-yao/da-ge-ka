@@ -92,6 +92,18 @@ public sealed class SettingsService
             return false;
         }
 
+        if (settings.BreakStart >= settings.BreakEnd)
+        {
+            message = "久坐提醒开始时间必须早于结束时间。";
+            return false;
+        }
+
+        if (settings.BreakIntervalMinutes is not (60 or 90 or 120 or 180))
+        {
+            message = "久坐提醒间隔必须是 1、1.5、2 或 3 小时。";
+            return false;
+        }
+
         message = string.Empty;
         return true;
     }

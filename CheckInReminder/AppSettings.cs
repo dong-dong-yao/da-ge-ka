@@ -14,6 +14,14 @@ public sealed class AppSettings
 
     public bool AutoStart { get; set; } = true;
 
+    public bool BreakReminderEnabled { get; set; }
+
+    public TimeOnly BreakStart { get; set; } = new(9, 0);
+
+    public TimeOnly BreakEnd { get; set; } = new(18, 0);
+
+    public int BreakIntervalMinutes { get; set; } = 60;
+
     public static AppSettings CreateDefault() => new();
 
     public AppSettings Clone() => new()
@@ -24,6 +32,10 @@ public sealed class AppSettings
         EveningStart = EveningStart,
         EveningIntervalMinutes = EveningIntervalMinutes,
         AutoStart = AutoStart,
+        BreakReminderEnabled = BreakReminderEnabled,
+        BreakStart = BreakStart,
+        BreakEnd = BreakEnd,
+        BreakIntervalMinutes = BreakIntervalMinutes,
     };
 
 }

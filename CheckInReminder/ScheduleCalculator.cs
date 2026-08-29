@@ -11,6 +11,12 @@ public static class ScheduleCalculator
     public static bool IsInEveningWindow(DateTime now, TimeOnly start) =>
         TimeOnly.FromDateTime(now) >= start;
 
+    public static bool IsInBreakWindow(DateTime now, TimeOnly start, TimeOnly end)
+    {
+        var current = TimeOnly.FromDateTime(now);
+        return current >= start && current < end;
+    }
+
     public static DateTime? GetNextMorningDue(
         DateTime now,
         TimeOnly start,
@@ -24,6 +30,28 @@ public static class ScheduleCalculator
 
     public static DateTime GetNextEveningDue(DateTime now, TimeOnly start, int intervalMinutes) =>
         GetNextFixedDue(now, start, intervalMinutes);
+
+    public static DateTime? GetNextBreakDue(
+        DateTime now,
+        TimeOnly start,
+        TimeOnly end,
+        int intervalMinutes)
+    {
+        var candidate = GetNextFixedDue(now, start, intervalMinutes);
+        var endBoundary = now.Date.Add(end.ToTimeSpan());
+        return candidate < endBoundary ? candidate : null;
+    }
+
+    public static DateTime GetNextDailyBreakDue(
+        DateTime now,
+        TimeOnly start,
+        TimeOnly end,
+        int intervalMinutes) =>
+        GetNextBreakDue(now, start, end, intervalMinutes) ??
+        now.Date.AddDays(1).Add(start.ToTimeSpan());
+
+    public static bool IsAtBreakStartAnchor(DateTime now, TimeOnly start) =>
+        TimeOnly.FromDateTime(now) == start;
 
     private static DateTime GetNextFixedDue(DateTime now, TimeOnly start, int intervalMinutes)
     {

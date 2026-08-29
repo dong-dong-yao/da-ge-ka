@@ -20,8 +20,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="Assets\ReminderBanner.jpg" LogicalName="CheckInReminder.Assets.ReminderBanner.jpg" />
-    <EmbeddedResource Include="Assets\EveningConfirm.jpg" LogicalName="CheckInReminder.Assets.EveningConfirm.jpg" />
+    <EmbeddedResource Include="Assets\Animations\**\*.png" />
   </ItemGroup>
 
 </Project>

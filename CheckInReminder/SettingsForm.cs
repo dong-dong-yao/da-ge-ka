@@ -9,6 +9,10 @@ internal sealed class SettingsForm : Form
     private readonly ComboBox morningIntervalBox;
     private readonly DateTimePicker eveningStartPicker;
     private readonly ComboBox eveningIntervalBox;
+    private readonly CheckBox breakReminderCheckBox;
+    private readonly DateTimePicker breakStartPicker;
+    private readonly DateTimePicker breakEndPicker;
+    private readonly ComboBox breakIntervalBox;
     private readonly CheckBox autoStartCheckBox;
     private readonly Func<AppSettings, string?> saveSettings;
     private readonly Action testReminder;
@@ -25,8 +29,8 @@ internal sealed class SettingsForm : Form
         MinimizeBox = false;
         ShowInTaskbar = false;
         AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(460, 500);
-        MinimumSize = new Size(476, 555);
+        ClientSize = new Size(520, 680);
+        MinimumSize = new Size(536, 720);
         BackColor = UiTheme.WarmBackgroundColor;
         ForeColor = UiTheme.TextColor;
         Font = new Font((SystemFonts.MessageBoxFont ?? Control.DefaultFont).FontFamily, 10);
@@ -36,6 +40,18 @@ internal sealed class SettingsForm : Form
         morningIntervalBox = CreateIntervalBox(settings.MorningIntervalMinutes);
         eveningStartPicker = CreateTimePicker(settings.EveningStart);
         eveningIntervalBox = CreateIntervalBox(settings.EveningIntervalMinutes);
+        breakReminderCheckBox = new CheckBox
+        {
+            Text = "启用久坐提醒",
+            Checked = settings.BreakReminderEnabled,
+            AutoSize = true,
+            ForeColor = UiTheme.TextColor,
+            BackColor = UiTheme.WarmBackgroundColor,
+        };
+        breakStartPicker = CreateTimePicker(settings.BreakStart);
+        breakEndPicker = CreateTimePicker(settings.BreakEnd);
+        breakIntervalBox = CreateBreakIntervalBox(settings.BreakIntervalMinutes);
+        breakReminderCheckBox.CheckedChanged += (_, _) => UpdateBreakControls();
         autoStartCheckBox = new CheckBox
         {
             Text = "开机自启动",
@@ -50,14 +66,14 @@ internal sealed class SettingsForm : Form
             Dock = DockStyle.Fill,
             Padding = new Padding(22),
             ColumnCount = 2,
-            RowCount = 10,
+            RowCount = 15,
             AutoScroll = true,
             GrowStyle = TableLayoutPanelGrowStyle.FixedSize,
             BackColor = UiTheme.WarmBackgroundColor,
         };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 44));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 56));
-        for (var row = 0; row < 8; row++)
+        for (var row = 0; row < 13; row++)
         {
             layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         }
@@ -71,7 +87,13 @@ internal sealed class SettingsForm : Form
         AddSection(layout, "晚上提醒", 4);
         AddRow(layout, "开始时间", eveningStartPicker, 5);
         AddRow(layout, "提醒间隔（分钟）", eveningIntervalBox, 6);
-        layout.Controls.Add(autoStartCheckBox, 0, 7);
+        AddSection(layout, "久坐提醒", 7);
+        layout.Controls.Add(breakReminderCheckBox, 0, 8);
+        layout.SetColumnSpan(breakReminderCheckBox, 2);
+        AddRow(layout, "开始时间", breakStartPicker, 9);
+        AddRow(layout, "结束时间", breakEndPicker, 10);
+        AddRow(layout, "提醒间隔", breakIntervalBox, 11);
+        layout.Controls.Add(autoStartCheckBox, 0, 12);
         layout.SetColumnSpan(autoStartCheckBox, 2);
 
         var testButton = new Button { Text = "测试提醒", Size = new Size(118, 44) };
@@ -92,7 +114,7 @@ internal sealed class SettingsForm : Form
         };
         buttons.Controls.Add(saveButton);
         buttons.Controls.Add(testButton);
-        layout.Controls.Add(buttons, 0, 9);
+        layout.Controls.Add(buttons, 0, 14);
         layout.SetColumnSpan(buttons, 2);
         var brandHeader = new Panel
         {
@@ -125,6 +147,7 @@ internal sealed class SettingsForm : Form
         shell.Controls.Add(brandHeader, 0, 0);
         shell.Controls.Add(layout, 0, 1);
         Controls.Add(shell);
+        UpdateBreakControls();
     }
 
     private void Save()
@@ -144,6 +167,10 @@ internal sealed class SettingsForm : Form
             EveningStart = TimeOnly.FromDateTime(eveningStartPicker.Value),
             EveningIntervalMinutes = eveningInterval,
             AutoStart = autoStartCheckBox.Checked,
+            BreakReminderEnabled = breakReminderCheckBox.Checked,
+            BreakStart = TimeOnly.FromDateTime(breakStartPicker.Value),
+            BreakEnd = TimeOnly.FromDateTime(breakEndPicker.Value),
+            BreakIntervalMinutes = GetSelectedBreakInterval(),
         };
 
         if (!SettingsService.TryValidate(candidate, out var validationMessage))
@@ -182,6 +209,42 @@ internal sealed class SettingsForm : Form
         box.Items.AddRange(["5", "10", "15", "30"]);
         box.Text = value.ToString(CultureInfo.InvariantCulture);
         return box;
+    }
+
+    private static ComboBox CreateBreakIntervalBox(int value)
+    {
+        var box = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Width = 120,
+            BackColor = UiTheme.SurfaceColor,
+            ForeColor = UiTheme.TextColor,
+        };
+        box.Items.AddRange(["1 小时", "1.5 小时", "2 小时", "3 小时"]);
+        box.SelectedIndex = value switch
+        {
+            90 => 1,
+            120 => 2,
+            180 => 3,
+            _ => 0,
+        };
+        return box;
+    }
+
+    private int GetSelectedBreakInterval() => breakIntervalBox.SelectedIndex switch
+    {
+        1 => 90,
+        2 => 120,
+        3 => 180,
+        _ => 60,
+    };
+
+    private void UpdateBreakControls()
+    {
+        var enabled = breakReminderCheckBox.Checked;
+        breakStartPicker.Enabled = enabled;
+        breakEndPicker.Enabled = enabled;
+        breakIntervalBox.Enabled = enabled;
     }
 
     private static void AddSection(TableLayoutPanel layout, string text, int row)

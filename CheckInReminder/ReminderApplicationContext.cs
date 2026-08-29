@@ -11,9 +11,10 @@ internal sealed class ReminderApplicationContext : ApplicationContext
     private readonly AutoStartService autoStartService = new();
     private readonly ReminderScheduler scheduler;
     private readonly ShutdownGuardForm shutdownGuard;
+    private readonly ReminderQueue reminderQueue = new();
     private AppSettings settings;
     private SettingsForm? settingsForm;
-    private ReminderBannerForm? banner;
+    private AnimatedReminderSession? reminder;
     private EveningConfirmForm? confirm;
     private bool morningCompleted;
     private bool eveningCompleted;
@@ -110,6 +111,10 @@ internal sealed class ReminderApplicationContext : ApplicationContext
         {
             settingsService.Save(candidate);
             settings = candidate.Clone();
+            if (!settings.BreakReminderEnabled)
+            {
+                reminderQueue.CancelPendingBreak();
+            }
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
         {
@@ -124,22 +129,37 @@ internal sealed class ReminderApplicationContext : ApplicationContext
 
     private void RequestReminder(ReminderKind kind)
     {
-        if (isExiting || banner is not null || confirm is not null ||
+        if (isExiting ||
             (kind == ReminderKind.Morning && morningCompleted) ||
             (kind == ReminderKind.Evening && eveningCompleted))
         {
             return;
         }
 
-        banner = new ReminderBannerForm(clicked => HandleBannerResult(kind, clicked));
-        banner.Show();
+        var action = reminderQueue.Request(kind);
+        if (action == ReminderQueueAction.ReplaceCurrent)
+        {
+            reminder?.CloseWithoutResult();
+            reminder = null;
+        }
+
+        if (action is ReminderQueueAction.Show or ReminderQueueAction.ReplaceCurrent)
+        {
+            ShowReminder(kind);
+        }
     }
 
     private void HandleBannerResult(ReminderKind kind, bool clicked)
     {
-        banner = null;
-        if (!clicked || isExiting)
+        reminder = null;
+        if (isExiting)
         {
+            return;
+        }
+
+        if (!clicked || kind == ReminderKind.Break)
+        {
+            CompleteReminderFlow();
             return;
         }
 
@@ -147,6 +167,7 @@ internal sealed class ReminderApplicationContext : ApplicationContext
         {
             morningCompleted = true;
             scheduler.CompletionChanged(DateTime.Now);
+            CompleteReminderFlow();
             return;
         }
 
@@ -157,14 +178,19 @@ internal sealed class ReminderApplicationContext : ApplicationContext
     private void HandleConfirmResult(ReminderKind kind, bool confirmed)
     {
         confirm = null;
-        if (isExiting || kind == ReminderKind.Test || !confirmed)
+        if (isExiting)
         {
             return;
         }
 
-        eveningCompleted = true;
-        scheduler.CompletionChanged(DateTime.Now);
-        UpdateShutdownBlockRegistration(DateTime.Now);
+        if (kind != ReminderKind.Test && confirmed)
+        {
+            eveningCompleted = true;
+            scheduler.CompletionChanged(DateTime.Now);
+            UpdateShutdownBlockRegistration(DateTime.Now);
+        }
+
+        CompleteReminderFlow();
     }
 
     private void OnPowerModeChanged(object sender, PowerModeChangedEventArgs eventArgs)
@@ -226,10 +252,7 @@ internal sealed class ReminderApplicationContext : ApplicationContext
             return;
         }
 
-        if (banner is null)
-        {
-            RequestReminder(ReminderKind.Evening);
-        }
+        RequestReminder(ReminderKind.Evening);
     }
 
     private void ExitApplication()
@@ -254,8 +277,9 @@ internal sealed class ReminderApplicationContext : ApplicationContext
             SystemEvents.PowerModeChanged -= OnPowerModeChanged;
             SystemEvents.SessionSwitch -= OnSessionSwitch;
             scheduler.Dispose();
-            banner?.CloseForExit();
-            banner = null;
+            reminderQueue.Clear();
+            reminder?.CloseWithoutResult();
+            reminder = null;
             confirm?.CloseForExit();
             confirm = null;
             settingsForm?.Close();
@@ -269,5 +293,20 @@ internal sealed class ReminderApplicationContext : ApplicationContext
         }
 
         base.ExitThreadCore();
+    }
+
+    private void ShowReminder(ReminderKind kind)
+    {
+        reminder = new AnimatedReminderSession(kind, clicked => HandleBannerResult(kind, clicked));
+        reminder.Show();
+    }
+
+    private void CompleteReminderFlow()
+    {
+        var next = reminderQueue.CompleteCurrent();
+        if (!isExiting && next is { } nextKind)
+        {
+            ShowReminder(nextKind);
+        }
     }
 }
