@@ -104,6 +104,12 @@ public sealed class SettingsService
             return false;
         }
 
+        if (AnimationCatalog.FindCharacter(settings.CharacterId) is null)
+        {
+            message = "请选择可用的提醒角色。";
+            return false;
+        }
+
         message = string.Empty;
         return true;
     }

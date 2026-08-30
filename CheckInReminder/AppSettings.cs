@@ -22,6 +22,8 @@ public sealed class AppSettings
 
     public int BreakIntervalMinutes { get; set; } = 60;
 
+    public string CharacterId { get; set; } = AnimationCatalog.DefaultCharacterId;
+
     public static AppSettings CreateDefault() => new();
 
     public AppSettings Clone() => new()
@@ -36,6 +38,7 @@ public sealed class AppSettings
         BreakStart = BreakStart,
         BreakEnd = BreakEnd,
         BreakIntervalMinutes = BreakIntervalMinutes,
+        CharacterId = CharacterId,
     };
 
 }

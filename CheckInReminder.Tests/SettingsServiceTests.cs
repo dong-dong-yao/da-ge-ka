@@ -14,6 +14,18 @@ public sealed class SettingsServiceTests
         Assert.AreEqual(new TimeOnly(9, 0), settings.BreakStart);
         Assert.AreEqual(new TimeOnly(18, 0), settings.BreakEnd);
         Assert.AreEqual(60, settings.BreakIntervalMinutes);
+        Assert.AreEqual("white-bear", settings.CharacterId);
+    }
+
+    [TestMethod]
+    public void Clone_PreservesSelectedCharacter()
+    {
+        var settings = AppSettings.CreateDefault();
+        settings.CharacterId = "white-bear";
+
+        var clone = settings.Clone();
+
+        Assert.AreEqual("white-bear", clone.CharacterId);
     }
 
     [TestMethod]
@@ -44,10 +56,23 @@ public sealed class SettingsServiceTests
             Assert.AreEqual(new TimeOnly(9, 0), settings.BreakStart);
             Assert.AreEqual(new TimeOnly(18, 0), settings.BreakEnd);
             Assert.AreEqual(60, settings.BreakIntervalMinutes);
+            Assert.AreEqual("white-bear", settings.CharacterId);
         }
         finally
         {
             Directory.Delete(directory, recursive: true);
         }
+    }
+
+    [TestMethod]
+    public void Validation_RejectsUnknownCharacter()
+    {
+        var settings = AppSettings.CreateDefault();
+        settings.CharacterId = "missing-character";
+
+        var valid = SettingsService.TryValidate(settings, out var message);
+
+        Assert.IsFalse(valid);
+        StringAssert.Contains(message, "角色");
     }
 }

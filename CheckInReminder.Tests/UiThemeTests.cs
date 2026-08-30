@@ -33,6 +33,21 @@ public sealed class UiThemeTests
     }
 
     [TestMethod]
+    public void CharacterCatalog_ProvidesStableDefaultCharacter()
+    {
+        Assert.HasCount(1, AnimationCatalog.Characters);
+
+        var character = AnimationCatalog.FindCharacter(AnimationCatalog.DefaultCharacterId);
+
+        Assert.IsNotNull(character);
+        Assert.AreEqual("white-bear", character.Id);
+        Assert.AreEqual("白熊", character.DisplayName);
+        Assert.AreEqual("Edge", character.SequenceName);
+        Assert.AreEqual(AnimationCatalog.EdgeDuration, character.Duration);
+        Assert.IsNull(AnimationCatalog.FindCharacter("missing-character"));
+    }
+
+    [TestMethod]
     public void PublishedAssembly_ContainsBothCompleteAnimationSequences()
     {
         var resources = typeof(AnimationCatalog).Assembly.GetManifestResourceNames();
@@ -50,5 +65,19 @@ public sealed class UiThemeTests
     {
         Assert.AreNotEqual(UiTheme.PrimaryButtonBackColor.ToArgb(), UiTheme.PrimaryButtonForeColor.ToArgb());
         Assert.AreNotEqual(UiTheme.SecondaryButtonBackColor.ToArgb(), UiTheme.SecondaryButtonForeColor.ToArgb());
+    }
+
+    [TestMethod]
+    public void Theme_PrimaryAndSurfaceTextMeetReadableContrast()
+    {
+        Assert.IsGreaterThanOrEqualTo(
+            4.5,
+            UiTheme.ContrastRatio(UiTheme.PrimaryButtonForeColor, UiTheme.PrimaryButtonBackColor));
+        Assert.IsGreaterThanOrEqualTo(
+            4.5,
+            UiTheme.ContrastRatio(UiTheme.TextColor, UiTheme.SurfaceColor));
+        Assert.IsGreaterThanOrEqualTo(
+            4.5,
+            UiTheme.ContrastRatio(UiTheme.SecondaryButtonForeColor, UiTheme.SecondaryButtonBackColor));
     }
 }

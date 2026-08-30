@@ -16,13 +16,15 @@ internal sealed class AnimatedReminderSession : IDisposable
     private bool bubbleShown;
     private bool finished;
 
-    public AnimatedReminderSession(ReminderKind kind, Action<bool> completed)
+    public AnimatedReminderSession(ReminderKind kind, string characterId, Action<bool> completed)
     {
         this.completed = completed;
+        var reminderCharacter = AnimationCatalog.FindCharacter(characterId) ??
+            AnimationCatalog.FindCharacter(AnimationCatalog.DefaultCharacterId)!;
         sequence = AnimationSequence.Load(
-            "Edge",
-            AnimationCatalog.EdgeDuration,
-            AnimationCatalog.EdgeLoops);
+            reminderCharacter.SequenceName,
+            reminderCharacter.Duration,
+            reminderCharacter.Loop);
         var edge = Enum.GetValues<ScreenEdge>()[Random.Shared.Next(4)];
         character = new LayeredAnimationForm(sequence.Frames[0].Size, edge, CharacterScale);
         bubble = new ReminderBubbleForm(kind, () => Finish(clicked: true));

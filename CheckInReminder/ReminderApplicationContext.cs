@@ -297,7 +297,10 @@ internal sealed class ReminderApplicationContext : ApplicationContext
 
     private void ShowReminder(ReminderKind kind)
     {
-        reminder = new AnimatedReminderSession(kind, clicked => HandleBannerResult(kind, clicked));
+        reminder = new AnimatedReminderSession(
+            kind,
+            settings.CharacterId,
+            clicked => HandleBannerResult(kind, clicked));
         reminder.Show();
     }
 

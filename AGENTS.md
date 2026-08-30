@@ -23,7 +23,7 @@ dotnet publish .\CheckInReminder\CheckInReminder.csproj -c Release -r win-x64 --
 - `CheckInReminder/`：程序源码和嵌入式视觉资源。
 - `CheckInReminder.Tests/`：时间计算与主题契约测试。
 - `README.md`：公开使用、构建及边界说明的权威入口。
-- 不持久化完成状态、日期或历史，只保存十项用户设置。
+- 不持久化完成状态、日期或历史，只保存十一项用户设置（原十项加角色 ID）。
 - 保留提醒文案和固定时间锚点语义；更改行为时先补测试。
 - 发布必须是 `win-x64`、self-contained、single-file，禁止 trimming。
 - 不运行无人值守的真实关机或重启测试。
