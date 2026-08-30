@@ -1,4 +1,7 @@
-# 打个卡
+<div align="center">
+  <img src="docs/media/dagaka-icon.png" alt="打个卡图标" width="160">
+  <h1>打个卡</h1>
+</div>
 
 由于作者总是忘记上下班打卡，于是，打个卡诞生了...
 
