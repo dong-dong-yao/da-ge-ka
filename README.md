@@ -52,7 +52,7 @@
 
 ## 快速安装
 
-1. 前往 [下载最新版](https://github.com/dong-dong-yao/da-ge-ka/releases/latest)，下载 Release 中的 `打个卡.exe`，放在固定目录。
+1. 前往 [下载最新版](https://github.com/dong-dong-yao/da-ge-ka/releases/latest)，下载 Release 中的 `DaGeKa-v1.0.0-win-x64.exe`，放在固定目录；程序启动后显示的名称仍然是“打个卡”。
 2. 双击启动；程序不会打开主窗口，而是驻留系统托盘。
 3. 双击托盘图标，或右键选择“设置”，即可修改提醒参数。
 4. 托盘右键选择“退出程序”可直接退出。
