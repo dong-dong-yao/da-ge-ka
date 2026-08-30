@@ -1,6 +1,19 @@
 <div align="center">
   <img src="docs/media/dagaka-icon.png" alt="打个卡图标" width="160">
   <h1>打个卡</h1>
+  <p>
+    <a href="https://github.com/dong-dong-yao/da-ge-ka/actions/workflows/build.yml"><img src="https://github.com/dong-dong-yao/da-ge-ka/actions/workflows/build.yml/badge.svg" alt="自动测试"></a>
+    <a href="https://github.com/dong-dong-yao/da-ge-ka/releases/latest"><img src="https://img.shields.io/github/v/release/dong-dong-yao/da-ge-ka?label=Release" alt="最新版本"></a>
+    <a href="https://github.com/dong-dong-yao/da-ge-ka/releases"><img src="https://img.shields.io/github/downloads/dong-dong-yao/da-ge-ka/total?label=Downloads" alt="下载量"></a>
+    <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows" alt="Windows 10 和 11">
+    <img src="https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet" alt=".NET 10">
+    <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-0A84FF" alt="MIT License"></a>
+  </p>
+  <p>
+    <a href="https://github.com/dong-dong-yao/da-ge-ka/releases/latest"><strong>⬇️ 下载最新版</strong></a>
+    ·
+    <a href="CONTRIBUTING.md"><strong>🐾 一起共建</strong></a>
+  </p>
 </div>
 
 由于作者总是忘记上下班打卡，于是，打个卡诞生了...
@@ -20,6 +33,18 @@
 - Windows 普通关机或重启时，在晚间尚未确认的情况下进行 best-effort 提醒。
 - 单实例运行，不联网，不记录打卡历史。
 
+## 一起把“打个卡”变得更可爱
+
+打个卡现在还只有一只白熊，但它不应该永远只有一只白熊。
+
+特别欢迎你一起参与：不会写代码也完全没关系。你可以画一个原创小角色，制作 GIF、视频或透明 PNG 动画，想一句更可爱的提醒文案，分享功能点子；也可以帮助改进代码、界面，或者在不同的 Windows 电脑上试用并反馈问题。
+
+被项目采用的角色和素材，会在仓库中标注作者名字与个人主页。为了保护创作者和使用者，请只投稿自己的原创作品，或你明确拥有公开授权的素材；不要直接提交未经许可的动漫、游戏、影视或表情包角色。
+
+- [查看参与贡献说明](CONTRIBUTING.md)
+- [投稿一个新角色](https://github.com/dong-dong-yao/da-ge-ka/issues/new?template=character-submission.yml)
+- [提出问题或新点子](https://github.com/dong-dong-yao/da-ge-ka/issues/new/choose)
+
 ## 系统要求
 
 - Windows 10 或 Windows 11 x64
@@ -27,7 +52,7 @@
 
 ## 快速安装
 
-1. 下载或构建 `打个卡.exe`，放在固定目录。
+1. 前往 [下载最新版](https://github.com/dong-dong-yao/da-ge-ka/releases/latest)，下载 Release 中的 `打个卡.exe`，放在固定目录。
 2. 双击启动；程序不会打开主窗口，而是驻留系统托盘。
 3. 双击托盘图标，或右键选择“设置”，即可修改提醒参数。
 4. 托盘右键选择“退出程序”可直接退出。
@@ -85,4 +110,4 @@ Win32 行为参考：
 
 ## 许可证
 
-程序代码使用 [MIT License](LICENSE)。仓库中由外部素材转换而来的角色动画不因该许可证而改变其原有权利归属；再次公开分发或商用前应自行确认素材授权。
+程序代码使用 [MIT License](LICENSE)。角色、美术和动画素材可能使用各自单独标注的授权；仓库中由外部素材转换而来的角色动画不因 MIT 许可证而改变其原有权利归属，再次公开分发或商用前应自行确认素材授权。

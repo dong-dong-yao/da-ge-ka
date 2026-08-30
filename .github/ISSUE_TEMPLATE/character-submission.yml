@@ -1,0 +1,92 @@
+name: 投稿一个新角色
+description: 提交原创角色、动画或角色创意，让“打个卡”变得更可爱
+title: "[角色投稿] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        谢谢你来投稿！不会写代码也完全没关系。初次投稿不要求固定帧数或固定尺寸，先让我们看到角色和动作创意即可。
+
+  - type: input
+    id: character-name
+    attributes:
+      label: 角色名字
+      placeholder: 例如：白熊、困困猫
+    validations:
+      required: true
+
+  - type: input
+    id: author-name
+    attributes:
+      label: 作者署名
+      description: 角色被采用后，希望我们展示的名字。
+      placeholder: 你的昵称或名字
+    validations:
+      required: true
+
+  - type: input
+    id: author-link
+    attributes:
+      label: 作者主页
+      description: 可填写 GitHub、个人网站或社交主页；不想公开可以留空。
+      placeholder: https://...
+
+  - type: textarea
+    id: character-description
+    attributes:
+      label: 角色介绍和性格
+      description: 简单说说它是谁、是什么性格、为什么适合提醒大家打卡。
+      placeholder: 它有一点困，但提醒别人打卡时特别认真……
+    validations:
+      required: true
+
+  - type: textarea
+    id: preview
+    attributes:
+      label: 预览图或动画
+      description: 可以把图片、GIF 或短视频直接拖进输入框，也可以粘贴公开下载链接。
+      placeholder: 把文件拖到这里，或粘贴链接
+    validations:
+      required: true
+
+  - type: textarea
+    id: source-files
+    attributes:
+      label: 源文件
+      description: 如果有原图、视频、PNG 序列或其他可继续加工的文件，请拖入或提供下载地址；初次讨论也可以暂时留空。
+      placeholder: 文件、网盘或仓库链接
+
+  - type: textarea
+    id: animation-idea
+    attributes:
+      label: 希望它怎样出现
+      description: 例如从屏幕下方探头、从右边滑出来，或者做一个什么动作。
+      placeholder: 从屏幕下方探出头，挥两下爪子……
+    validations:
+      required: true
+
+  - type: dropdown
+    id: asset-license
+    attributes:
+      label: 素材授权
+      description: 请选择你愿意采用的授权；选择“其他”时请在补充说明里写清楚。
+      options:
+        - CC BY 4.0（允许使用和修改，需要署名）
+        - CC0（尽可能放弃权利限制）
+        - 其他授权（请在补充说明中写明）
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: rights-confirmation
+    attributes:
+      label: 权利确认
+      options:
+        - label: 我确认这是我的原创作品，或我拥有提交、授权、修改和再分发它所需的权利；我同意本项目按照上面选择的授权使用、修改和重新分发这些素材。
+          required: true
+
+  - type: textarea
+    id: extra-notes
+    attributes:
+      label: 补充说明
+      description: 其他授权文字、制作想法、希望保留的细节，都可以写在这里。
