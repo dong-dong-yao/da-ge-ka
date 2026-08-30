@@ -8,3 +8,5 @@ TestResults/
 coverage/
 release/
 .watch-review/
+.workbuddy/
+docs/*交接*.md

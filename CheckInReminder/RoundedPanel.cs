@@ -5,14 +5,17 @@ namespace CheckInReminder;
 
 internal sealed class RoundedPanel : Panel
 {
-    [DefaultValue(22)]
-    public int CornerRadius { get; set; } = 22;
+    [DefaultValue(26)]
+    public int CornerRadius { get; set; } = 26;
 
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public Color SurfaceColor { get; set; } = UiTheme.SurfaceColor;
 
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public Color OutlineColor { get; set; } = UiTheme.BorderColor;
+
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool ShowOutline { get; set; } = true;
 
     public RoundedPanel()
     {
@@ -26,17 +29,20 @@ internal sealed class RoundedPanel : Panel
     {
         base.OnPaint(e);
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        var shadowBounds = new Rectangle(4, 5, Math.Max(1, Width - 9), Math.Max(1, Height - 10));
+        var shadowBounds = new Rectangle(5, 6, Math.Max(1, Width - 11), Math.Max(1, Height - 11));
         using var shadowPath = CreateRoundedPath(shadowBounds, CornerRadius);
         using var shadowBrush = new SolidBrush(UiTheme.ShadowColor);
         e.Graphics.FillPath(shadowBrush, shadowPath);
 
-        var cardBounds = new Rectangle(1, 1, Math.Max(1, Width - 7), Math.Max(1, Height - 8));
+        var cardBounds = new Rectangle(2, 1, Math.Max(1, Width - 10), Math.Max(1, Height - 9));
         using var cardPath = CreateRoundedPath(cardBounds, CornerRadius);
         using var fillBrush = new SolidBrush(SurfaceColor);
-        using var borderPen = new Pen(OutlineColor);
         e.Graphics.FillPath(fillBrush, cardPath);
-        e.Graphics.DrawPath(borderPen, cardPath);
+        if (ShowOutline)
+        {
+            using var borderPen = new Pen(OutlineColor);
+            e.Graphics.DrawPath(borderPen, cardPath);
+        }
     }
 
     internal static GraphicsPath CreateRoundedPath(Rectangle bounds, int radius)

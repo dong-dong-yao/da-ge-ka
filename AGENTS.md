@@ -6,6 +6,8 @@
 
 ## 常用命令
 
+本机裸 `dotnet` 无 SDK（`global.json` 锁定 10.0.400），请用本地 SDK：`.\.dotnet\dotnet.exe` 替代下列 `dotnet`。
+
 ```powershell
 dotnet test .\CheckInReminder.slnx -c Release
 dotnet build .\CheckInReminder.slnx -c Release
@@ -30,4 +32,4 @@ dotnet publish .\CheckInReminder\CheckInReminder.csproj -c Release -r win-x64 --
 
 ## 当前状态
 
-截至 2026-08-30，本地测试为 35/35 通过，Release 构建为 0 警告、0 错误。透明动画、托盘、焦点、自启动和关机拦截仍需在真实 Windows 10/11 环境人工验证。
+截至 2026-08-30，本地测试为 42/42 通过，Release 构建为 0 警告、0 错误。透明动画、设置页交互、托盘、焦点、自启动和关机拦截仍需在真实 Windows 10/11 环境人工验证。

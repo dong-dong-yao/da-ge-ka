@@ -4,28 +4,24 @@ namespace CheckInReminder;
 
 internal sealed class SettingsForm : Form
 {
-    private const int ExpandedBreakHeight = 188;
-    private const int CollapsedBreakHeight = 82;
-    private readonly DateTimePicker morningStartPicker;
-    private readonly DateTimePicker morningEndPicker;
-    private readonly ComboBox morningIntervalBox;
-    private readonly DateTimePicker eveningStartPicker;
-    private readonly ComboBox eveningIntervalBox;
+    private const int ExpandedBreakHeight = 320;
+    private readonly SoftTimePicker morningStartPicker;
+    private readonly SoftTimePicker morningEndPicker;
+    private readonly SoftComboBox morningIntervalBox;
+    private readonly SoftTimePicker eveningStartPicker;
+    private readonly SoftComboBox eveningIntervalBox;
     private readonly ToggleSwitch breakReminderToggle;
-    private readonly DateTimePicker breakStartPicker;
-    private readonly DateTimePicker breakEndPicker;
-    private readonly ComboBox breakIntervalBox;
+    private readonly SoftTimePicker breakStartPicker;
+    private readonly SoftTimePicker breakEndPicker;
+    private readonly SoftComboBox breakIntervalBox;
     private readonly ToggleSwitch autoStartToggle;
     private readonly CharacterSelectorControl characterSelector;
     private readonly Panel breakDetails;
-    private readonly RowStyle breakRowStyle;
-    private readonly System.Windows.Forms.Timer breakAnimationTimer;
     private readonly System.Windows.Forms.Timer openingTimer;
     private readonly System.Windows.Forms.Timer saveFeedbackTimer;
     private readonly BrandButton saveButton;
     private readonly Func<AppSettings, string?> saveSettings;
     private readonly Action testReminder;
-    private int targetBreakHeight;
 
     public SettingsForm(AppSettings settings, Func<AppSettings, string?> saveSettings, Action testReminder)
     {
@@ -39,8 +35,8 @@ internal sealed class SettingsForm : Form
         MinimizeBox = false;
         ShowInTaskbar = false;
         AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(900, 700);
-        MinimumSize = new Size(916, 739);
+        ClientSize = new Size(940, 1120);
+        MinimumSize = new Size(956, 1159);
         BackColor = UiTheme.WarmBackgroundColor;
         ForeColor = UiTheme.TextColor;
         Font = new Font((SystemFonts.MessageBoxFont ?? Control.DefaultFont).FontFamily, 10);
@@ -70,38 +66,40 @@ internal sealed class SettingsForm : Form
         characterSelector = new CharacterSelectorControl(settings.CharacterId);
 
         var morningCard = CreateSettingsCard(
+            IconBadge.IconKind.Sun,
             "上午提醒",
+            "上班前这段时间里提醒你打卡",
             ("开始时间", morningStartPicker),
             ("结束时间", morningEndPicker),
-            ("提醒间隔", morningIntervalBox));
+            ("提醒间隔（分钟）", morningIntervalBox));
         var eveningCard = CreateSettingsCard(
+            IconBadge.IconKind.Moon,
             "晚上提醒",
+            "下班前提醒你打卡并温柔挽留",
             ("开始时间", eveningStartPicker),
-            ("提醒间隔", eveningIntervalBox));
+            ("提醒间隔（分钟）", eveningIntervalBox));
         var breakCardResult = CreateBreakCard();
         var breakCard = breakCardResult.Card;
         breakDetails = breakCardResult.Details;
         var autoStartCard = CreateToggleCard(
+            IconBadge.IconKind.Power,
             "开机自启动",
             "登录 Windows 后自动守候提醒",
             autoStartToggle);
 
-        breakRowStyle = new RowStyle(
-            SizeType.Absolute,
-            settings.BreakReminderEnabled ? ExpandedBreakHeight : CollapsedBreakHeight);
         var leftColumn = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
             RowCount = 4,
             BackColor = Color.Transparent,
-            Margin = new Padding(0, 0, 9, 0),
+            Margin = new Padding(0, 0, 8, 0),
         };
         leftColumn.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        leftColumn.RowStyles.Add(new RowStyle(SizeType.Absolute, 138));
-        leftColumn.RowStyles.Add(new RowStyle(SizeType.Absolute, 112));
-        leftColumn.RowStyles.Add(breakRowStyle);
-        leftColumn.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        leftColumn.RowStyles.Add(new RowStyle(SizeType.Absolute, 268));
+        leftColumn.RowStyles.Add(new RowStyle(SizeType.Absolute, 208));
+        leftColumn.RowStyles.Add(new RowStyle(SizeType.Absolute, ExpandedBreakHeight));
+        leftColumn.RowStyles.Add(new RowStyle(SizeType.Absolute, 104));
         AddCard(leftColumn, morningCard, 0);
         AddCard(leftColumn, eveningCard, 1);
         AddCard(leftColumn, breakCard, 2);
@@ -111,7 +109,7 @@ internal sealed class SettingsForm : Form
         {
             Dock = DockStyle.Fill,
             Padding = new Padding(2),
-            Margin = new Padding(9, 0, 0, 0),
+            Margin = new Padding(8, 0, 0, 0),
         };
         characterCard.Controls.Add(characterSelector);
 
@@ -120,7 +118,7 @@ internal sealed class SettingsForm : Form
             Dock = DockStyle.Fill,
             ColumnCount = 2,
             RowCount = 1,
-            Padding = new Padding(24, 20, 24, 16),
+            Padding = new Padding(24, 18, 24, 14),
             BackColor = UiTheme.WarmBackgroundColor,
             Margin = Padding.Empty,
         };
@@ -133,16 +131,16 @@ internal sealed class SettingsForm : Form
         saveButton = new BrandButton
         {
             Text = "保存全部设置",
-            Size = new Size(148, 44),
-            CornerRadius = 18,
+            Size = new Size(150, 44),
+            CornerRadius = 22,
             AccessibleName = "保存全部设置",
         };
         saveButton.Click += (_, _) => Save();
         var testButton = new BrandButton(BrandButtonKind.Secondary)
         {
             Text = "测试提醒",
-            Size = new Size(122, 44),
-            CornerRadius = 18,
+            Size = new Size(118, 44),
+            CornerRadius = 22,
             AccessibleName = "测试提醒",
         };
         testButton.Click += (_, _) => this.testReminder();
@@ -159,28 +157,25 @@ internal sealed class SettingsForm : Form
             Padding = Padding.Empty,
         };
         shell.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 92));
+        shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 86));
         shell.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 76));
+        shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 78));
         shell.Controls.Add(CreateHeader(), 0, 0);
         shell.Controls.Add(content, 0, 1);
         shell.Controls.Add(footer, 0, 2);
         Controls.Add(shell);
 
         breakDetails.Enabled = settings.BreakReminderEnabled;
-        breakDetails.Visible = settings.BreakReminderEnabled;
-        targetBreakHeight = settings.BreakReminderEnabled ? ExpandedBreakHeight : CollapsedBreakHeight;
-        breakReminderToggle.CheckedChanged += (_, _) => BeginBreakTransition();
+        breakDetails.Visible = true;
+        breakReminderToggle.CheckedChanged += (_, _) => breakDetails.Enabled = breakReminderToggle.Checked;
 
-        breakAnimationTimer = new System.Windows.Forms.Timer { Interval = 15 };
-        breakAnimationTimer.Tick += (_, _) => AnimateBreakCard();
         openingTimer = new System.Windows.Forms.Timer { Interval = 16 };
         openingTimer.Tick += (_, _) => AnimateOpening();
-        saveFeedbackTimer = new System.Windows.Forms.Timer { Interval = 1200 };
+        saveFeedbackTimer = new System.Windows.Forms.Timer { Interval = 750 };
         saveFeedbackTimer.Tick += (_, _) =>
         {
             saveFeedbackTimer.Stop();
-            saveButton.Text = "保存全部设置";
+            Close();
         };
         Shown += (_, _) => openingTimer.Start();
     }
@@ -189,7 +184,6 @@ internal sealed class SettingsForm : Form
     {
         if (disposing)
         {
-            breakAnimationTimer.Dispose();
             openingTimer.Dispose();
             saveFeedbackTimer.Dispose();
         }
@@ -203,24 +197,23 @@ internal sealed class SettingsForm : Form
         {
             Dock = DockStyle.Fill,
             Margin = Padding.Empty,
-            Padding = new Padding(28, 15, 28, 12),
         };
         var title = new Label
         {
             Text = "打个卡",
             AutoSize = true,
             Font = new Font((SystemFonts.MessageBoxFont ?? Control.DefaultFont).FontFamily, 20, FontStyle.Bold),
-            ForeColor = Color.White,
+            ForeColor = Color.FromArgb(255, 251, 244),
             BackColor = Color.Transparent,
-            Location = new Point(28, 14),
+            Location = new Point(30, 12),
         };
         var subtitle = new Label
         {
             Text = "提醒设置 · 把重要的小事交给可爱的角色",
             AutoSize = true,
-            ForeColor = Color.FromArgb(246, 237, 227),
+            ForeColor = Color.FromArgb(250, 236, 218),
             BackColor = Color.Transparent,
-            Location = new Point(31, 55),
+            Location = new Point(32, 58),
         };
         header.Controls.Add(title);
         header.Controls.Add(subtitle);
@@ -228,26 +221,29 @@ internal sealed class SettingsForm : Form
     }
 
     private static RoundedPanel CreateSettingsCard(
+        IconBadge.IconKind icon,
         string title,
+        string subtitle,
         params (string Label, Control Control)[] rows)
     {
-        var card = new RoundedPanel { Dock = DockStyle.Fill };
+        var card = new RoundedPanel { Dock = DockStyle.Fill, ShowOutline = false };
+        var header = new CardHeader(icon, title, subtitle) { Dock = DockStyle.Top };
         var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
             RowCount = rows.Length + 1,
-            Padding = new Padding(18, 10, 18, 10),
+            Padding = new Padding(20, 10, 20, 14),
             BackColor = Color.Transparent,
         };
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 57));
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 43));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
-        layout.Controls.Add(CreateSectionTitle(title), 0, 0);
-        layout.SetColumnSpan(layout.GetControlFromPosition(0, 0)!, 2);
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 56));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 44));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, header.Height));
+        layout.Controls.Add(header, 0, 0);
+        layout.SetColumnSpan(header, 2);
         for (var index = 0; index < rows.Length; index++)
         {
-            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100f / rows.Length));
             AddSettingRow(layout, rows[index].Label, rows[index].Control, index + 1);
         }
 
@@ -257,42 +253,28 @@ internal sealed class SettingsForm : Form
 
     private (RoundedPanel Card, Panel Details) CreateBreakCard()
     {
-        var card = new RoundedPanel { Dock = DockStyle.Fill };
-        var header = new TableLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            Height = 55,
-            ColumnCount = 2,
-            BackColor = Color.Transparent,
-            Padding = new Padding(18, 12, 18, 6),
-        };
-        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 58));
-        var textStack = new FlowLayoutPanel
+        var card = new RoundedPanel { Dock = DockStyle.Fill, ShowOutline = false };
+        var header = new CardHeader(IconBadge.IconKind.Chair, "久坐提醒", "按工作时段提醒你站起来活动");
+        var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            FlowDirection = FlowDirection.TopDown,
-            WrapContents = false,
+            ColumnCount = 2,
+            RowCount = 2,
             BackColor = Color.Transparent,
-            Margin = Padding.Empty,
+            Padding = new Padding(20, 12, 20, 12),
         };
-        textStack.Controls.Add(CreateSectionTitle("久坐提醒"));
-        textStack.Controls.Add(new Label
-        {
-            Text = "按工作时段提醒你站起来活动",
-            AutoSize = true,
-            ForeColor = UiTheme.MutedTextColor,
-            BackColor = Color.Transparent,
-            Margin = Padding.Empty,
-        });
-        header.Controls.Add(textStack, 0, 0);
-        header.Controls.Add(breakReminderToggle, 1, 0);
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 54));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, header.Height));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        layout.Controls.Add(header, 0, 0);
+        layout.Controls.Add(breakReminderToggle, 1, 0);
 
         var details = new Panel
         {
             Dock = DockStyle.Fill,
             BackColor = Color.Transparent,
-            Padding = new Padding(18, 0, 18, 10),
+            Margin = Padding.Empty,
         };
         var detailsLayout = new TableLayoutPanel
         {
@@ -300,9 +282,10 @@ internal sealed class SettingsForm : Form
             ColumnCount = 2,
             RowCount = 3,
             BackColor = Color.Transparent,
+            Margin = Padding.Empty,
         };
-        detailsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 57));
-        detailsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 43));
+        detailsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 56));
+        detailsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 44));
         for (var row = 0; row < 3; row++)
         {
             detailsLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 33.333f));
@@ -311,43 +294,27 @@ internal sealed class SettingsForm : Form
         AddSettingRow(detailsLayout, "结束时间", breakEndPicker, 1);
         AddSettingRow(detailsLayout, "提醒间隔", breakIntervalBox, 2);
         details.Controls.Add(detailsLayout);
+        layout.Controls.Add(details, 0, 1);
+        layout.SetColumnSpan(details, 2);
 
-        card.Controls.Add(details);
-        card.Controls.Add(header);
+        card.Controls.Add(layout);
         return (card, details);
     }
 
-    private static RoundedPanel CreateToggleCard(string title, string subtitle, ToggleSwitch toggle)
+    private static RoundedPanel CreateToggleCard(IconBadge.IconKind icon, string title, string subtitle, ToggleSwitch toggle)
     {
-        var card = new RoundedPanel { Dock = DockStyle.Fill };
+        var card = new RoundedPanel { Dock = DockStyle.Fill, ShowOutline = false };
         var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
             RowCount = 1,
-            Padding = new Padding(18, 10, 18, 10),
+            Padding = new Padding(20, 8, 30, 8),
             BackColor = Color.Transparent,
         };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 58));
-        var textStack = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            FlowDirection = FlowDirection.TopDown,
-            WrapContents = false,
-            BackColor = Color.Transparent,
-            Margin = Padding.Empty,
-        };
-        textStack.Controls.Add(CreateSectionTitle(title));
-        textStack.Controls.Add(new Label
-        {
-            Text = subtitle,
-            AutoSize = true,
-            ForeColor = UiTheme.MutedTextColor,
-            BackColor = Color.Transparent,
-            Margin = Padding.Empty,
-        });
-        layout.Controls.Add(textStack, 0, 0);
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 50));
+        layout.Controls.Add(new CardHeader(icon, title, subtitle) { Dock = DockStyle.Fill }, 0, 0);
         layout.Controls.Add(toggle, 1, 0);
         card.Controls.Add(layout);
         return card;
@@ -360,8 +327,8 @@ internal sealed class SettingsForm : Form
             Dock = DockStyle.Fill,
             ColumnCount = 2,
             RowCount = 1,
-            Padding = new Padding(25, 11, 25, 15),
-            BackColor = UiTheme.SurfaceColor,
+            Padding = new Padding(26, 12, 26, 16),
+            BackColor = Color.Transparent,
             Margin = Padding.Empty,
         };
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -382,6 +349,10 @@ internal sealed class SettingsForm : Form
             BackColor = Color.Transparent,
             Margin = Padding.Empty,
         };
+        testButton.Margin = new Padding(0, 0, 12, 0);
+        testButton.Anchor = AnchorStyles.None;
+        saveButton.Margin = Padding.Empty;
+        saveButton.Anchor = AnchorStyles.None;
         buttons.Controls.Add(testButton);
         buttons.Controls.Add(saveButton);
         footer.Controls.Add(buttons, 1, 0);
@@ -390,8 +361,8 @@ internal sealed class SettingsForm : Form
 
     private void Save()
     {
-        if (!int.TryParse(morningIntervalBox.Text, NumberStyles.None, CultureInfo.InvariantCulture, out var morningInterval) ||
-            !int.TryParse(eveningIntervalBox.Text, NumberStyles.None, CultureInfo.InvariantCulture, out var eveningInterval))
+        if (!int.TryParse(morningIntervalBox.Text.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out var morningInterval) ||
+            !int.TryParse(eveningIntervalBox.Text.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out var eveningInterval))
         {
             MessageBox.Show(this, "提醒间隔必须是整数。", "设置错误", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
@@ -399,15 +370,15 @@ internal sealed class SettingsForm : Form
 
         var candidate = new AppSettings
         {
-            MorningStart = TimeOnly.FromDateTime(morningStartPicker.Value),
-            MorningEnd = TimeOnly.FromDateTime(morningEndPicker.Value),
+            MorningStart = morningStartPicker.Value,
+            MorningEnd = morningEndPicker.Value,
             MorningIntervalMinutes = morningInterval,
-            EveningStart = TimeOnly.FromDateTime(eveningStartPicker.Value),
+            EveningStart = eveningStartPicker.Value,
             EveningIntervalMinutes = eveningInterval,
             AutoStart = autoStartToggle.Checked,
             BreakReminderEnabled = breakReminderToggle.Checked,
-            BreakStart = TimeOnly.FromDateTime(breakStartPicker.Value),
-            BreakEnd = TimeOnly.FromDateTime(breakEndPicker.Value),
+            BreakStart = breakStartPicker.Value,
+            BreakEnd = breakEndPicker.Value,
             BreakIntervalMinutes = GetSelectedBreakInterval(),
             CharacterId = characterSelector.ConfirmedCharacterId,
         };
@@ -430,47 +401,43 @@ internal sealed class SettingsForm : Form
         saveFeedbackTimer.Start();
     }
 
-    private static DateTimePicker CreateTimePicker(TimeOnly value) => new()
+    private static SoftTimePicker CreateTimePicker(TimeOnly value) => new(value)
     {
-        Format = DateTimePickerFormat.Custom,
-        CustomFormat = "HH:mm",
-        ShowUpDown = true,
-        Value = DateTime.Today.Add(value.ToTimeSpan()),
-        Width = 132,
-        Font = new Font((SystemFonts.MessageBoxFont ?? Control.DefaultFont).FontFamily, 11),
-        CalendarForeColor = UiTheme.TextColor,
-        CalendarMonthBackground = UiTheme.SurfaceColor,
+        Size = new Size(138, 38),
         Anchor = AnchorStyles.Right,
+        Font = new Font((SystemFonts.MessageBoxFont ?? Control.DefaultFont).FontFamily, 11f, FontStyle.Bold),
     };
 
-    private static ComboBox CreateIntervalBox(int value)
+    private static SoftComboBox CreateIntervalBox(int value)
     {
-        var box = new ComboBox
+        var box = new SoftComboBox
         {
-            DropDownStyle = ComboBoxStyle.DropDown,
-            Width = 132,
-            BackColor = UiTheme.SurfaceColor,
-            ForeColor = UiTheme.TextColor,
-            Font = new Font((SystemFonts.MessageBoxFont ?? Control.DefaultFont).FontFamily, 10.5f),
+            Size = new Size(138, 38),
             Anchor = AnchorStyles.Right,
+            Font = new Font((SystemFonts.MessageBoxFont ?? Control.DefaultFont).FontFamily, 11f, FontStyle.Bold),
         };
-        box.Items.AddRange(["5", "10", "15", "30"]);
+        foreach (var item in new[] { "5", "10", "15", "30" })
+        {
+            box.Items.Add(item);
+        }
+
         box.Text = value.ToString(CultureInfo.InvariantCulture);
         return box;
     }
 
-    private static ComboBox CreateBreakIntervalBox(int value)
+    private static SoftComboBox CreateBreakIntervalBox(int value)
     {
-        var box = new ComboBox
+        var box = new SoftComboBox
         {
-            DropDownStyle = ComboBoxStyle.DropDownList,
-            Width = 132,
-            BackColor = UiTheme.SurfaceColor,
-            ForeColor = UiTheme.TextColor,
-            Font = new Font((SystemFonts.MessageBoxFont ?? Control.DefaultFont).FontFamily, 10.5f),
+            Size = new Size(138, 38),
             Anchor = AnchorStyles.Right,
+            Font = new Font((SystemFonts.MessageBoxFont ?? Control.DefaultFont).FontFamily, 11f, FontStyle.Bold),
         };
-        box.Items.AddRange(["1 小时", "1.5 小时", "2 小时", "3 小时"]);
+        foreach (var item in new[] { "1 小时", "1.5 小时", "2 小时", "3 小时" })
+        {
+            box.Items.Add(item);
+        }
+
         box.SelectedIndex = value switch
         {
             90 => 1,
@@ -487,16 +454,6 @@ internal sealed class SettingsForm : Form
         2 => 120,
         3 => 180,
         _ => 60,
-    };
-
-    private static Label CreateSectionTitle(string text) => new()
-    {
-        Text = text,
-        AutoSize = true,
-        Font = new Font((SystemFonts.MessageBoxFont ?? Control.DefaultFont).FontFamily, 11.5f, FontStyle.Bold),
-        ForeColor = UiTheme.TextColor,
-        BackColor = Color.Transparent,
-        Margin = Padding.Empty,
     };
 
     private static void AddSettingRow(TableLayoutPanel layout, string text, Control control, int row)
@@ -516,29 +473,6 @@ internal sealed class SettingsForm : Form
     {
         card.Margin = new Padding(0, row == 0 ? 0 : 6, 0, 6);
         layout.Controls.Add(card, 0, row);
-    }
-
-    private void BeginBreakTransition()
-    {
-        breakDetails.Visible = true;
-        targetBreakHeight = breakReminderToggle.Checked ? ExpandedBreakHeight : CollapsedBreakHeight;
-        breakAnimationTimer.Start();
-    }
-
-    private void AnimateBreakCard()
-    {
-        var current = (int)breakRowStyle.Height;
-        var distance = targetBreakHeight - current;
-        if (Math.Abs(distance) <= 10)
-        {
-            breakRowStyle.Height = targetBreakHeight;
-            breakAnimationTimer.Stop();
-            breakDetails.Enabled = breakReminderToggle.Checked;
-            breakDetails.Visible = breakReminderToggle.Checked;
-            return;
-        }
-
-        breakRowStyle.Height = current + Math.Sign(distance) * 10;
     }
 
     private void AnimateOpening()

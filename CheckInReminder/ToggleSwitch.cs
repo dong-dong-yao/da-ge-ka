@@ -3,9 +3,15 @@ using System.Drawing.Drawing2D;
 
 namespace CheckInReminder;
 
+/// <summary>
+/// 暖色滑动开关：切换时滑块平滑移动，轨道颜色渐变过渡。
+/// </summary>
 internal sealed class ToggleSwitch : Control
 {
     private bool isChecked;
+    private float position;
+    private bool hovered;
+    private readonly AnimationHelper slideAnimation;
 
     public event EventHandler? CheckedChanged;
 
@@ -22,14 +28,14 @@ internal sealed class ToggleSwitch : Control
 
             isChecked = value;
             AccessibleDefaultActionDescription = value ? "关闭" : "开启";
-            Invalidate();
+            slideAnimation.Start(position, value ? 1f : 0f, 220);
             CheckedChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 
     public ToggleSwitch()
     {
-        Size = new Size(50, 28);
+        Size = new Size(48, 26);
         MinimumSize = new Size(44, 24);
         Cursor = Cursors.Hand;
         TabStop = true;
@@ -40,6 +46,12 @@ internal sealed class ToggleSwitch : Control
             ControlStyles.OptimizedDoubleBuffer |
             ControlStyles.ResizeRedraw |
             ControlStyles.Selectable, true);
+
+        slideAnimation = new AnimationHelper(v =>
+        {
+            position = v;
+            Invalidate();
+        });
     }
 
     protected override void OnClick(EventArgs e)
@@ -59,24 +71,75 @@ internal sealed class ToggleSwitch : Control
         base.OnKeyDown(e);
     }
 
+    protected override void OnMouseEnter(EventArgs e)
+    {
+        base.OnMouseEnter(e);
+        hovered = true;
+        Invalidate();
+    }
+
+    protected override void OnMouseLeave(EventArgs e)
+    {
+        base.OnMouseLeave(e);
+        hovered = false;
+        Invalidate();
+    }
+
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
-        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        var g = e.Graphics;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+
         var track = new Rectangle(0, 1, Width - 1, Height - 2);
         using var trackPath = RoundedPanel.CreateRoundedPath(track, track.Height / 2);
-        using var trackBrush = new SolidBrush(Checked ? UiTheme.AccentColor : Color.FromArgb(205, 194, 182));
-        e.Graphics.FillPath(trackBrush, trackPath);
+
+        var offColor = Color.FromArgb(219, 207, 192);
+        var onColor = UiTheme.AccentColor;
+        var trackColor = Blend(offColor, onColor, position);
+        using var trackBrush = new SolidBrush(trackColor);
+        g.FillPath(trackBrush, trackPath);
 
         var inset = 4;
         var diameter = Height - (inset * 2);
-        var thumbX = Checked ? Width - diameter - inset : inset;
-        using var thumbBrush = new SolidBrush(Color.White);
-        e.Graphics.FillEllipse(thumbBrush, thumbX, inset, diameter, diameter);
+        var travel = Width - diameter - (inset * 2);
+        var thumbX = inset + (travel * position);
+
+        // 滑块柔和投影
+        using (var shadowBrush = new SolidBrush(Color.FromArgb(36, 60, 40, 20)))
+        {
+            g.FillEllipse(shadowBrush, thumbX, inset + 2, diameter, diameter);
+        }
+
+        using var thumbBrush = new SolidBrush(hovered ? Color.FromArgb(255, 250, 242) : Color.White);
+        g.FillEllipse(thumbBrush, thumbX, inset, diameter, diameter);
 
         if (Focused)
         {
-            ControlPaint.DrawFocusRectangle(e.Graphics, ClientRectangle, UiTheme.AccentColor, BackColor);
+            using var focusPen = new Pen(UiTheme.AccentColor, 1.6f);
+            var focusBounds = new Rectangle(-2, -1, Width + 3, Height + 3);
+            using var focusPath = RoundedPanel.CreateRoundedPath(focusBounds, (Height + 3) / 2);
+            g.DrawPath(focusPen, focusPath);
         }
+    }
+
+    private static Color Blend(Color a, Color b, float t)
+    {
+        var clamped = Math.Clamp(t, 0f, 1f);
+        return Color.FromArgb(
+            255,
+            (int)(a.R + ((b.R - a.R) * clamped)),
+            (int)(a.G + ((b.G - a.G) * clamped)),
+            (int)(a.B + ((b.B - a.B) * clamped)));
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            slideAnimation.Dispose();
+        }
+
+        base.Dispose(disposing);
     }
 }

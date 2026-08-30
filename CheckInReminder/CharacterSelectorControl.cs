@@ -9,8 +9,8 @@ internal sealed class CharacterSelectorControl : UserControl
     private readonly Label nameLabel;
     private readonly Label positionLabel;
     private readonly Label statusLabel;
-    private readonly BrandButton previousButton;
-    private readonly BrandButton nextButton;
+    private readonly ChevronButton previousButton;
+    private readonly ChevronButton nextButton;
     private readonly BrandButton confirmButton;
     private readonly System.Windows.Forms.Timer animationTimer;
     private readonly System.Windows.Forms.Timer feedbackTimer;
@@ -64,8 +64,8 @@ internal sealed class CharacterSelectorControl : UserControl
         };
         previewShell.Controls.Add(previewBox);
 
-        previousButton = CreateArrowButton("‹", "上一个角色");
-        nextButton = CreateArrowButton("›", "下一个角色");
+        previousButton = new ChevronButton { PointsLeft = true, Dock = DockStyle.Fill, AccessibleName = "上一个角色", Margin = new Padding(3) };
+        nextButton = new ChevronButton { PointsLeft = false, Dock = DockStyle.Fill, AccessibleName = "下一个角色", Margin = new Padding(3) };
         previousButton.Click += (_, _) => Browse(previous: true);
         nextButton.Click += (_, _) => Browse(previous: false);
 
@@ -85,9 +85,9 @@ internal sealed class CharacterSelectorControl : UserControl
             BackColor = Color.Transparent,
             Margin = Padding.Empty,
         };
-        navigation.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 46));
+        navigation.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 48));
         navigation.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        navigation.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 46));
+        navigation.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 48));
         navigation.Controls.Add(previousButton, 0, 0);
         navigation.Controls.Add(nameLabel, 1, 0);
         navigation.Controls.Add(nextButton, 2, 0);
@@ -169,16 +169,6 @@ internal sealed class CharacterSelectorControl : UserControl
 
         base.Dispose(disposing);
     }
-
-    private static BrandButton CreateArrowButton(string text, string accessibleName) => new(BrandButtonKind.Secondary)
-    {
-        Text = text,
-        Dock = DockStyle.Fill,
-        CornerRadius = 20,
-        Font = new Font("Segoe UI", 19, FontStyle.Regular),
-        AccessibleName = accessibleName,
-        Margin = new Padding(3),
-    };
 
     private void Browse(bool previous)
     {
