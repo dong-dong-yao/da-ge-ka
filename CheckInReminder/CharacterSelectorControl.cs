@@ -18,6 +18,7 @@ internal sealed class CharacterSelectorControl : UserControl
     private AnimationSequence? previewSequence;
     private AnimationTimeline? previewTimeline;
     private int currentFrame = -1;
+    private bool interactionPaused;
 
     public event EventHandler? SelectionConfirmed;
 
@@ -170,6 +171,28 @@ internal sealed class CharacterSelectorControl : UserControl
         base.Dispose(disposing);
     }
 
+    internal void SetInteractionPaused(bool paused)
+    {
+        if (interactionPaused == paused)
+        {
+            return;
+        }
+
+        interactionPaused = paused;
+        if (paused)
+        {
+            animationTimer.Stop();
+            animationClock.Stop();
+            return;
+        }
+
+        if (previewSequence is not null)
+        {
+            animationClock.Start();
+            animationTimer.Start();
+        }
+    }
+
     private void Browse(bool previous)
     {
         var moved = previous ? selection.MovePrevious() : selection.MoveNext();
@@ -219,12 +242,19 @@ internal sealed class CharacterSelectorControl : UserControl
         currentFrame = 0;
         previewBox.Image = previewSequence.Frames[0];
         animationClock.Restart();
-        animationTimer.Start();
+        if (interactionPaused)
+        {
+            animationClock.Stop();
+        }
+        else
+        {
+            animationTimer.Start();
+        }
     }
 
     private void AdvancePreview()
     {
-        if (previewSequence is null || previewTimeline is null)
+        if (interactionPaused || previewSequence is null || previewTimeline is null)
         {
             return;
         }

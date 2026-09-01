@@ -8,20 +8,39 @@ namespace CheckInReminder;
 /// </summary>
 internal sealed class CardHeader : Control
 {
-    private readonly IconBadge.IconKind icon;
     private readonly string title;
     private readonly string subtitle;
     private readonly Font titleFont;
     private readonly Font subtitleFont;
+    private readonly SizeF titleSize;
+    private readonly SizeF subtitleSize;
+    private readonly Bitmap badgeBitmap;
+    private readonly SolidBrush titleBrush;
+    private readonly SolidBrush subtitleBrush;
 
     public CardHeader(IconBadge.IconKind icon, string title, string subtitle)
     {
-        this.icon = icon;
         this.title = title;
         this.subtitle = subtitle;
         var family = (SystemFonts.MessageBoxFont ?? Control.DefaultFont).FontFamily;
         titleFont = new Font(family, 11f, FontStyle.Bold);
         subtitleFont = new Font(family, 8.5f);
+        using (var graphics = CreateGraphics())
+        {
+            titleSize = graphics.MeasureString(title, titleFont);
+            subtitleSize = string.IsNullOrEmpty(subtitle)
+                ? SizeF.Empty
+                : graphics.MeasureString(subtitle, subtitleFont);
+        }
+
+        badgeBitmap = new Bitmap(30, 30);
+        using (var badge = new IconBadge { Kind = icon, Size = new Size(30, 30) })
+        {
+            badge.DrawToBitmap(badgeBitmap, new Rectangle(0, 0, 30, 30));
+        }
+
+        titleBrush = new SolidBrush(UiTheme.TextColor);
+        subtitleBrush = new SolidBrush(UiTheme.MutedTextColor);
         SetStyle(ControlStyles.UserPaint |
             ControlStyles.AllPaintingInWmPaint |
             ControlStyles.OptimizedDoubleBuffer |
@@ -35,13 +54,8 @@ internal sealed class CardHeader : Control
 
     private int MeasureContentHeight()
     {
-        using var g = CreateGraphics();
-        var titleHeight = g.MeasureString(title, titleFont).Height;
-        var subtitleHeight = string.IsNullOrEmpty(subtitle)
-            ? 0
-            : g.MeasureString(subtitle, subtitleFont).Height;
         // 图标与标题垂直居中于标题行，副标题紧随其后
-        var contentHeight = (int)Math.Ceiling(Math.Max(30, titleHeight) + (subtitleHeight > 0 ? 4 + subtitleHeight : 0));
+        var contentHeight = (int)Math.Ceiling(Math.Max(30, titleSize.Height) + (subtitleSize.Height > 0 ? 4 + subtitleSize.Height : 0));
         return contentHeight + 8; // 上下各留 4px 呼吸
     }
 
@@ -51,31 +65,17 @@ internal sealed class CardHeader : Control
         g.SmoothingMode = SmoothingMode.AntiAlias;
         g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
 
-        using var g2 = CreateGraphics();
-        var titleSize = g.MeasureString(title, titleFont);
-        var subtitleSize = string.IsNullOrEmpty(subtitle)
-            ? SizeF.Empty
-            : g.MeasureString(subtitle, subtitleFont);
-
         var titleHeight = Math.Max(30, titleSize.Height);
         var totalContent = titleHeight + (subtitleSize.Height > 0 ? 4 + subtitleSize.Height : 0);
         var top = (Height - totalContent) / 2f;
 
         // 图标：与标题行垂直居中对齐
         var iconTop = (int)(top + ((titleHeight - 30) / 2f));
-        using (var badge = new IconBadge { Kind = icon, Size = new Size(30, 30) })
-        {
-            using var badgeBitmap = new Bitmap(30, 30);
-            badge.DrawToBitmap(badgeBitmap, new Rectangle(0, 0, 30, 30));
-            g.DrawImage(badgeBitmap, 0, iconTop);
-        }
-
-        using var titleBrush = new SolidBrush(UiTheme.TextColor);
+        g.DrawImage(badgeBitmap, 0, iconTop);
         g.DrawString(title, titleFont, titleBrush, 38, top + ((titleHeight - titleSize.Height) / 2f));
 
         if (subtitleSize.Height > 0)
         {
-            using var subtitleBrush = new SolidBrush(UiTheme.MutedTextColor);
             g.DrawString(subtitle, subtitleFont, subtitleBrush, 38, top + titleHeight + 4);
         }
     }
@@ -86,6 +86,9 @@ internal sealed class CardHeader : Control
         {
             titleFont.Dispose();
             subtitleFont.Dispose();
+            badgeBitmap.Dispose();
+            titleBrush.Dispose();
+            subtitleBrush.Dispose();
         }
 
         base.Dispose(disposing);

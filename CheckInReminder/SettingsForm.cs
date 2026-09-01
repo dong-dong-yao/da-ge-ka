@@ -21,9 +21,12 @@ internal sealed class SettingsForm : Form
     private readonly Panel breakDetails;
     private readonly System.Windows.Forms.Timer openingTimer;
     private readonly System.Windows.Forms.Timer saveFeedbackTimer;
+    private readonly System.Windows.Forms.Timer scrollIdleTimer;
     private readonly BrandButton saveButton;
     private readonly Func<AppSettings, string?> saveSettings;
     private readonly Action testReminder;
+    private bool isInteractiveResize;
+    private bool isScrollSettling;
 
     public SettingsForm(AppSettings settings, Func<AppSettings, string?> saveSettings, Action testReminder)
     {
@@ -131,7 +134,7 @@ internal sealed class SettingsForm : Form
         content.Controls.Add(leftColumn, 0, 0);
         content.Controls.Add(characterCard, 1, 0);
 
-        var contentViewport = new Panel
+        var contentViewport = new BufferedScrollPanel
         {
             Dock = DockStyle.Fill,
             AutoScroll = true,
@@ -181,6 +184,31 @@ internal sealed class SettingsForm : Form
         breakDetails.Visible = true;
         breakReminderToggle.CheckedChanged += (_, _) => breakDetails.Enabled = breakReminderToggle.Checked;
 
+        scrollIdleTimer = new System.Windows.Forms.Timer { Interval = 120 };
+        scrollIdleTimer.Tick += (_, _) =>
+        {
+            scrollIdleTimer.Stop();
+            isScrollSettling = false;
+            UpdatePreviewInteractionState();
+        };
+        contentViewport.Scroll += (_, _) =>
+        {
+            isScrollSettling = true;
+            UpdatePreviewInteractionState();
+            scrollIdleTimer.Stop();
+            scrollIdleTimer.Start();
+        };
+        ResizeBegin += (_, _) =>
+        {
+            isInteractiveResize = true;
+            UpdatePreviewInteractionState();
+        };
+        ResizeEnd += (_, _) =>
+        {
+            isInteractiveResize = false;
+            UpdatePreviewInteractionState();
+        };
+
         openingTimer = new System.Windows.Forms.Timer { Interval = 16 };
         openingTimer.Tick += (_, _) => AnimateOpening();
         saveFeedbackTimer = new System.Windows.Forms.Timer { Interval = 750 };
@@ -198,6 +226,7 @@ internal sealed class SettingsForm : Form
         {
             openingTimer.Dispose();
             saveFeedbackTimer.Dispose();
+            scrollIdleTimer.Dispose();
         }
 
         base.Dispose(disposing);
@@ -497,4 +526,7 @@ internal sealed class SettingsForm : Form
             openingTimer.Stop();
         }
     }
+
+    private void UpdatePreviewInteractionState() =>
+        characterSelector.SetInteractionPaused(isInteractiveResize || isScrollSettling);
 }

@@ -156,6 +156,121 @@ public sealed class WindowBehaviorTests
         });
     }
 
+    [TestMethod]
+    public void SettingsWindow_PreviewPausesDuringInteractiveResizeAndResumesAfterwards()
+    {
+        RunOnStaThread(() =>
+        {
+            using var form = CreateSettingsForm();
+            form.Show();
+            Application.DoEvents();
+
+            var preview = Descendants(form).OfType<PictureBox>().Single();
+            Assert.IsTrue(WaitForImageChange(preview, preview.Image, 500), "测试前角色预览应处于播放状态。");
+
+            InvokeInstanceMethod(form, "OnResizeBegin", EventArgs.Empty);
+            var imageAtResizeStart = preview.Image;
+            PumpEvents(260);
+            Assert.AreSame(imageAtResizeStart, preview.Image, "拖动调整窗口尺寸时应暂停角色预览，避免与布局和绘制争抢 UI 线程。");
+
+            InvokeInstanceMethod(form, "OnResizeEnd", EventArgs.Empty);
+            Assert.IsTrue(WaitForImageChange(preview, imageAtResizeStart, 500), "结束调整窗口尺寸后应恢复角色预览。");
+        });
+    }
+
+    [TestMethod]
+    public void SettingsWindow_PreviewPausesDuringScrollAndResumesAfterIdle()
+    {
+        RunOnStaThread(() =>
+        {
+            using var form = CreateSettingsForm();
+            form.Show();
+            Application.DoEvents();
+
+            var preview = Descendants(form).OfType<PictureBox>().Single();
+            var viewport = Descendants(form)
+                .OfType<ScrollableControl>()
+                .Single(control => control.AutoScroll && control.Dock == DockStyle.Fill);
+            var scrollEvents = 0;
+            viewport.Scroll += (_, _) => scrollEvents++;
+
+            viewport.AutoScrollPosition = new Point(0, 120);
+            RaiseScroll(viewport, 120);
+            Application.DoEvents();
+            Assert.IsGreaterThan(0, scrollEvents, "测试必须通过真实滚动事件触发交互状态。");
+
+            var imageWhileScrolling = preview.Image;
+            for (var step = 0; step < 4; step++)
+            {
+                PumpEvents(60);
+                RaiseScroll(viewport, 140 + (step * 20));
+            }
+            Assert.AreSame(imageWhileScrolling, preview.Image, "滚动内容时应暂停角色预览，避免每 33ms 追加一次图片缩放重绘。");
+            Assert.IsTrue(WaitForImageChange(preview, imageWhileScrolling, 600), "停止滚动后应自动恢复角色预览。");
+        });
+    }
+
+    [TestMethod]
+    public void SettingsWindow_ScrollViewportUsesDoubleBuffering()
+    {
+        RunOnStaThread(() =>
+        {
+            using var form = CreateSettingsForm();
+            form.Show();
+            Application.DoEvents();
+
+            var viewport = Descendants(form)
+                .OfType<ScrollableControl>()
+                .Single(control => control.AutoScroll && control.Dock == DockStyle.Fill);
+            var doubleBuffered = (bool)(typeof(Control).GetProperty(
+                "DoubleBuffered",
+                BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(viewport) ?? false);
+
+            Assert.IsTrue(doubleBuffered, "设置页滚动视口应合并绘制操作，避免滚动时逐层闪烁和撕裂。");
+        });
+    }
+
+    [TestMethod]
+    public void CardHeader_RepeatedPaintingKeepsManagedAllocationBounded()
+    {
+        RunOnStaThread(() =>
+        {
+            var assembly = typeof(AppSettings).Assembly;
+            var iconKindType = assembly.GetType("CheckInReminder.IconBadge+IconKind", throwOnError: true)!;
+            var icon = Enum.Parse(iconKindType, "Power");
+            using var header = CreateInternalControl(
+                "CheckInReminder.CardHeader",
+                icon,
+                "开机自启动",
+                "登录 Windows 后自动守候提醒");
+            header.Width = 420;
+            using var host = new Form();
+            host.Controls.Add(header);
+            host.Show();
+            Application.DoEvents();
+            using var target = new Bitmap(header.Width, header.Height);
+
+            header.DrawToBitmap(target, header.ClientRectangle);
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+
+            const int paintCount = 50;
+            const long maximumBytesPerPaint = 1024;
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            for (var index = 0; index < paintCount; index++)
+            {
+                header.DrawToBitmap(target, header.ClientRectangle);
+            }
+            var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+            Assert.IsLessThanOrEqualTo(
+                paintCount * maximumBytesPerPaint,
+                allocated,
+                $"卡片标题重复绘制分配了 {allocated} 字节；绘制路径不应逐帧创建控件和位图。");
+        });
+    }
+
     private static Form CreateSettingsForm() => CreateInternalForm(
         "CheckInReminder.SettingsForm",
         AppSettings.CreateDefault(),
@@ -180,6 +295,17 @@ public sealed class WindowBehaviorTests
     {
         var type = typeof(AppSettings).Assembly.GetType(typeName, throwOnError: true)!;
         return (Form)(Activator.CreateInstance(
+            type,
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+            binder: null,
+            args: arguments,
+            culture: null) ?? throw new InvalidOperationException($"无法创建 {typeName}。"));
+    }
+
+    private static Control CreateInternalControl(string typeName, params object[] arguments)
+    {
+        var type = typeof(AppSettings).Assembly.GetType(typeName, throwOnError: true)!;
+        return (Control)(Activator.CreateInstance(
             type,
             BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
             binder: null,
@@ -213,6 +339,40 @@ public sealed class WindowBehaviorTests
         var topLeft = form.PointToClient(control.PointToScreen(Point.Empty));
         return topLeft.X + control.Width;
     }
+
+    private static bool WaitForImageChange(PictureBox pictureBox, Image? original, int timeoutMilliseconds)
+    {
+        var deadline = Environment.TickCount64 + timeoutMilliseconds;
+        while (Environment.TickCount64 < deadline)
+        {
+            Application.DoEvents();
+            if (!ReferenceEquals(original, pictureBox.Image))
+            {
+                return true;
+            }
+
+            Thread.Sleep(10);
+        }
+
+        return false;
+    }
+
+    private static void PumpEvents(int milliseconds)
+    {
+        var deadline = Environment.TickCount64 + milliseconds;
+        while (Environment.TickCount64 < deadline)
+        {
+            Application.DoEvents();
+            Thread.Sleep(10);
+        }
+    }
+
+    private static void RaiseScroll(ScrollableControl control, int newValue) =>
+        typeof(ScrollableControl).GetMethod(
+            "OnScroll",
+            BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(
+                control,
+                [new ScrollEventArgs(ScrollEventType.ThumbTrack, newValue, ScrollOrientation.VerticalScroll)]);
 
     private static void RunOnStaThread(Action action)
     {
