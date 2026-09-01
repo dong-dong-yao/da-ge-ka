@@ -233,6 +233,11 @@ internal sealed class ReminderApplicationContext : ApplicationContext
 
     private void UpdateShutdownBlockRegistration(DateTime now)
     {
+        if (isExiting || shutdownGuard.IsDisposed)
+        {
+            return;
+        }
+
         var shouldRegister = !isExiting &&
             !eveningCompleted &&
             ScheduleCalculator.IsInEveningWindow(now, settings.EveningStart);

@@ -5,6 +5,8 @@ namespace CheckInReminder;
 internal sealed class SettingsForm : Form
 {
     private const int ExpandedBreakHeight = 320;
+    private const int AutoStartCardHeight = 128;
+    private const int ScrollableContentHeight = 956;
     private readonly SoftTimePicker morningStartPicker;
     private readonly SoftTimePicker morningEndPicker;
     private readonly SoftComboBox morningIntervalBox;
@@ -30,13 +32,13 @@ internal sealed class SettingsForm : Form
 
         Text = UiTheme.SettingsTitle;
         StartPosition = FormStartPosition.CenterScreen;
-        FormBorderStyle = FormBorderStyle.FixedDialog;
-        MaximizeBox = false;
+        FormBorderStyle = FormBorderStyle.Sizable;
+        MaximizeBox = true;
         MinimizeBox = false;
         ShowInTaskbar = false;
         AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(940, 1120);
-        MinimumSize = new Size(956, 1159);
+        ClientSize = new Size(900, 680);
+        MinimumSize = new Size(780, 560);
         BackColor = UiTheme.WarmBackgroundColor;
         ForeColor = UiTheme.TextColor;
         Font = new Font((SystemFonts.MessageBoxFont ?? Control.DefaultFont).FontFamily, 10);
@@ -99,7 +101,7 @@ internal sealed class SettingsForm : Form
         leftColumn.RowStyles.Add(new RowStyle(SizeType.Absolute, 268));
         leftColumn.RowStyles.Add(new RowStyle(SizeType.Absolute, 208));
         leftColumn.RowStyles.Add(new RowStyle(SizeType.Absolute, ExpandedBreakHeight));
-        leftColumn.RowStyles.Add(new RowStyle(SizeType.Absolute, 104));
+        leftColumn.RowStyles.Add(new RowStyle(SizeType.Absolute, AutoStartCardHeight));
         AddCard(leftColumn, morningCard, 0);
         AddCard(leftColumn, eveningCard, 1);
         AddCard(leftColumn, breakCard, 2);
@@ -115,7 +117,8 @@ internal sealed class SettingsForm : Form
 
         var content = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill,
+            Dock = DockStyle.Top,
+            Height = ScrollableContentHeight,
             ColumnCount = 2,
             RowCount = 1,
             Padding = new Padding(24, 18, 24, 14),
@@ -127,6 +130,15 @@ internal sealed class SettingsForm : Form
         content.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         content.Controls.Add(leftColumn, 0, 0);
         content.Controls.Add(characterCard, 1, 0);
+
+        var contentViewport = new Panel
+        {
+            Dock = DockStyle.Fill,
+            AutoScroll = true,
+            BackColor = UiTheme.WarmBackgroundColor,
+            Margin = Padding.Empty,
+        };
+        contentViewport.Controls.Add(content);
 
         saveButton = new BrandButton
         {
@@ -161,7 +173,7 @@ internal sealed class SettingsForm : Form
         shell.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 78));
         shell.Controls.Add(CreateHeader(), 0, 0);
-        shell.Controls.Add(content, 0, 1);
+        shell.Controls.Add(contentViewport, 0, 1);
         shell.Controls.Add(footer, 0, 2);
         Controls.Add(shell);
 
@@ -304,17 +316,19 @@ internal sealed class SettingsForm : Form
     private static RoundedPanel CreateToggleCard(IconBadge.IconKind icon, string title, string subtitle, ToggleSwitch toggle)
     {
         var card = new RoundedPanel { Dock = DockStyle.Fill, ShowOutline = false };
+        var header = new CardHeader(icon, title, subtitle);
         var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
             RowCount = 1,
-            Padding = new Padding(20, 8, 30, 8),
+            Padding = new Padding(20, 12, 20, 12),
             BackColor = Color.Transparent,
         };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 50));
-        layout.Controls.Add(new CardHeader(icon, title, subtitle) { Dock = DockStyle.Fill }, 0, 0);
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 54));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, header.Height));
+        layout.Controls.Add(header, 0, 0);
         layout.Controls.Add(toggle, 1, 0);
         card.Controls.Add(layout);
         return card;

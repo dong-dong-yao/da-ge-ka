@@ -13,6 +13,7 @@ internal sealed class ShutdownGuardForm : Form
     private readonly Func<bool> shouldBlock;
     private readonly Action shutdownVetoed;
     private bool reasonRegistered;
+    private bool exitRequested;
 
     public ShutdownGuardForm(Func<bool> shouldBlock, Action shutdownVetoed)
     {
@@ -34,6 +35,11 @@ internal sealed class ShutdownGuardForm : Form
 
     public void UpdateRegistration(bool shouldRegister)
     {
+        if (IsDisposed || Disposing)
+        {
+            return;
+        }
+
         if (shouldRegister == reasonRegistered)
         {
             return;
@@ -52,8 +58,25 @@ internal sealed class ShutdownGuardForm : Form
 
     public void CloseForExit()
     {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        exitRequested = true;
         UpdateRegistration(shouldRegister: false);
         Close();
+    }
+
+    protected override void OnFormClosing(FormClosingEventArgs eventArgs)
+    {
+        if (!exitRequested && eventArgs.CloseReason == CloseReason.UserClosing)
+        {
+            eventArgs.Cancel = true;
+            return;
+        }
+
+        base.OnFormClosing(eventArgs);
     }
 
     protected override void WndProc(ref Message message)
