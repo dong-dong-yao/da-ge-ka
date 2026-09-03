@@ -17,7 +17,8 @@ internal sealed class ReminderApplicationContext : ApplicationContext
     private AnimatedReminderSession? reminder;
     private EveningConfirmForm? confirm;
     private PetOverlayForm? desktopPetForm;
-    private AnimationSequence? desktopPetSequence;
+    private DesktopPetController? desktopPetController;
+    private KeyboardHookService? keyboardHook;
     private ToolStripMenuItem? desktopPetItem;
     private ToolStripMenuItem? adjustPetPositionItem;
     private bool morningCompleted;
@@ -201,15 +202,29 @@ internal sealed class ReminderApplicationContext : ApplicationContext
 
         if (enabled && desktopPetForm is null)
         {
+            desktopPetForm = new PetOverlayForm();
+            desktopPetController = new DesktopPetController(desktopPetForm);
             LoadDesktopPetCharacter();
+            desktopPetForm.Show();
+            desktopPetForm.SetClickThrough(adjustPetPositionItem?.Checked != true);
+            keyboardHook = new KeyboardHookService();
+            keyboardHook.KeyTapped += (_, _) => desktopPetController?.OnKeyTapped();
+            if (!keyboardHook.Install())
+            {
+                // 被杀软等拦截时静默降级：宠物保留待机显示，仅不响应按键
+                keyboardHook.Dispose();
+                keyboardHook = null;
+            }
         }
         else if (!enabled && desktopPetForm is not null)
         {
+            keyboardHook?.Dispose();
+            keyboardHook = null;
+            desktopPetController?.Dispose();
+            desktopPetController = null;
             desktopPetForm.Close();
             desktopPetForm.Dispose();
             desktopPetForm = null;
-            desktopPetSequence?.Dispose();
-            desktopPetSequence = null;
         }
     }
 
@@ -217,20 +232,7 @@ internal sealed class ReminderApplicationContext : ApplicationContext
     {
         var character = AnimationCatalog.FindCharacter(settings.CharacterId)
             ?? AnimationCatalog.Characters[0];
-        desktopPetSequence?.Dispose();
-        // 骨架阶段：用提醒动画第 0 帧做静帧占位；敲击动画在钩子接入后播放
-        desktopPetSequence = AnimationSequence.Load(character.SequenceName, character.Duration, character.Loop);
-        if (desktopPetForm is null)
-        {
-            desktopPetForm = new PetOverlayForm();
-            desktopPetForm.SetFrame(desktopPetSequence.Frames[0]);
-            desktopPetForm.Show();
-            desktopPetForm.SetClickThrough(adjustPetPositionItem?.Checked != true);
-        }
-        else
-        {
-            desktopPetForm.SetFrame(desktopPetSequence.Frames[0]);
-        }
+        desktopPetController?.SetCharacter(character);
     }
 
     private void RequestReminder(ReminderKind kind)
@@ -395,11 +397,13 @@ internal sealed class ReminderApplicationContext : ApplicationContext
             confirm = null;
             settingsForm?.Close();
             settingsForm = null;
+            keyboardHook?.Dispose();
+            keyboardHook = null;
+            desktopPetController?.Dispose();
+            desktopPetController = null;
             desktopPetForm?.Close();
             desktopPetForm?.Dispose();
             desktopPetForm = null;
-            desktopPetSequence?.Dispose();
-            desktopPetSequence = null;
             shutdownGuard.CloseForExit();
             shutdownGuard.Dispose();
             notifyIcon.Visible = false;

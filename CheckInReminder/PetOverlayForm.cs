@@ -6,7 +6,7 @@ namespace CheckInReminder;
 /// 桌面宠物窗口：透明、置顶、不抢焦点的无边框悬浮窗。
 /// 默认鼠标穿透（点击穿过宠物落在后面的窗口上），托盘菜单可切换到拖动模式调整位置。
 /// </summary>
-internal sealed class PetOverlayForm : Form
+internal sealed class PetOverlayForm : Form, IPetFrameSink
 {
     private const int WsExLayered = 0x00080000;
     private const int WsExTransparent = 0x00000020;
