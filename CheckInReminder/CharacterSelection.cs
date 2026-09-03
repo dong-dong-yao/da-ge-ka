@@ -33,6 +33,19 @@ public sealed class CharacterSelection
 
     public bool MovePrevious() => Move(-1);
 
+    /// <summary>按角色 Id 直接选中（网格卡片点选用）。Id 不存在或已是当前选中时返回 false。</summary>
+    public bool SelectById(string id)
+    {
+        var index = FindIndex(id);
+        if (index < 0 || index == selectedIndex)
+        {
+            return false;
+        }
+
+        selectedIndex = index;
+        return true;
+    }
+
     public string Confirm()
     {
         ConfirmedCharacterId = SelectedCharacter.Id;

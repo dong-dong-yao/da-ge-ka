@@ -7,6 +7,7 @@ internal sealed class SettingsForm : Form
     private const int ExpandedBreakHeight = 320;
     private const int AutoStartCardHeight = 128;
     private const int ScrollableContentHeight = 956;
+    private const int SideNavWidth = 148;
     private readonly SoftTimePicker morningStartPicker;
     private readonly SoftTimePicker morningEndPicker;
     private readonly SoftComboBox morningIntervalBox;
@@ -17,7 +18,10 @@ internal sealed class SettingsForm : Form
     private readonly SoftTimePicker breakEndPicker;
     private readonly SoftComboBox breakIntervalBox;
     private readonly ToggleSwitch autoStartToggle;
-    private readonly CharacterSelectorControl characterSelector;
+    private readonly CurrentCharacterPreviewControl currentCharacterPreview;
+    private readonly CharactersPage charactersPage;
+    private readonly BufferedScrollPanel settingsPage;
+    private readonly SideNavBar sideNav;
     private readonly Panel breakDetails;
     private readonly System.Windows.Forms.Timer openingTimer;
     private readonly System.Windows.Forms.Timer saveFeedbackTimer;
@@ -40,8 +44,8 @@ internal sealed class SettingsForm : Form
         MinimizeBox = false;
         ShowInTaskbar = false;
         AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(900, 680);
-        MinimumSize = new Size(780, 560);
+        ClientSize = new Size(980, 700);
+        MinimumSize = new Size(860, 600);
         BackColor = UiTheme.WarmBackgroundColor;
         ForeColor = UiTheme.TextColor;
         Font = new Font((SystemFonts.MessageBoxFont ?? Control.DefaultFont).FontFamily, 10);
@@ -68,7 +72,12 @@ internal sealed class SettingsForm : Form
             AccessibleName = "开机自启动",
             Anchor = AnchorStyles.Right,
         };
-        characterSelector = new CharacterSelectorControl(settings.CharacterId);
+        currentCharacterPreview = new CurrentCharacterPreviewControl(settings.CharacterId);
+        charactersPage = new CharactersPage(settings.CharacterId)
+        {
+            Visible = false,
+        };
+        charactersPage.CharacterConfirmed += (_, characterId) => currentCharacterPreview.SetCharacter(characterId);
 
         var morningCard = CreateSettingsCard(
             IconBadge.IconKind.Sun,
@@ -116,7 +125,7 @@ internal sealed class SettingsForm : Form
             Padding = new Padding(2),
             Margin = new Padding(8, 0, 0, 0),
         };
-        characterCard.Controls.Add(characterSelector);
+        characterCard.Controls.Add(currentCharacterPreview);
 
         var content = new TableLayoutPanel
         {
@@ -134,14 +143,50 @@ internal sealed class SettingsForm : Form
         content.Controls.Add(leftColumn, 0, 0);
         content.Controls.Add(characterCard, 1, 0);
 
-        var contentViewport = new BufferedScrollPanel
+        settingsPage = new BufferedScrollPanel
         {
             Dock = DockStyle.Fill,
             AutoScroll = true,
             BackColor = UiTheme.WarmBackgroundColor,
             Margin = Padding.Empty,
         };
-        contentViewport.Controls.Add(content);
+        settingsPage.Controls.Add(content);
+
+        sideNav = new SideNavBar(
+            [
+                new SideNavBar.NavItem("settings", "设置", IconBadge.IconKind.Gear),
+                new SideNavBar.NavItem("characters", "角色", IconBadge.IconKind.Paw),
+            ],
+            "settings")
+        {
+            Dock = DockStyle.Fill,
+        };
+        sideNav.NavigationRequested += (_, key) => ShowPage(key);
+        currentCharacterPreview.ChangeCharacterRequested += (_, _) => sideNav.SelectPage("characters");
+
+        var pageHost = new Panel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = Color.Transparent,
+            Margin = Padding.Empty,
+        };
+        pageHost.Controls.Add(charactersPage);
+        pageHost.Controls.Add(settingsPage);
+
+        var middleRow = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 1,
+            BackColor = Color.Transparent,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+        };
+        middleRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, SideNavWidth));
+        middleRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        middleRow.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        middleRow.Controls.Add(sideNav, 0, 0);
+        middleRow.Controls.Add(pageHost, 1, 0);
 
         saveButton = new BrandButton
         {
@@ -176,7 +221,7 @@ internal sealed class SettingsForm : Form
         shell.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 78));
         shell.Controls.Add(CreateHeader(), 0, 0);
-        shell.Controls.Add(contentViewport, 0, 1);
+        shell.Controls.Add(middleRow, 0, 1);
         shell.Controls.Add(footer, 0, 2);
         Controls.Add(shell);
 
@@ -191,7 +236,7 @@ internal sealed class SettingsForm : Form
             isScrollSettling = false;
             UpdatePreviewInteractionState();
         };
-        contentViewport.Scroll += (_, _) =>
+        settingsPage.Scroll += (_, _) =>
         {
             isScrollSettling = true;
             UpdatePreviewInteractionState();
@@ -217,7 +262,13 @@ internal sealed class SettingsForm : Form
             saveFeedbackTimer.Stop();
             Close();
         };
-        Shown += (_, _) => openingTimer.Start();
+        Shown += (_, _) =>
+        {
+            openingTimer.Start();
+            // 构造期间窗体未显示，VisibleCore 为 false，Shown 时按真实可见性重估播放状态
+            UpdatePreviewInteractionState();
+        };
+        UpdatePreviewInteractionState();
     }
 
     protected override void Dispose(bool disposing)
@@ -423,7 +474,7 @@ internal sealed class SettingsForm : Form
             BreakStart = breakStartPicker.Value,
             BreakEnd = breakEndPicker.Value,
             BreakIntervalMinutes = GetSelectedBreakInterval(),
-            CharacterId = characterSelector.ConfirmedCharacterId,
+            CharacterId = charactersPage.ConfirmedCharacterId,
         };
 
         if (!SettingsService.TryValidate(candidate, out var validationMessage))
@@ -527,6 +578,18 @@ internal sealed class SettingsForm : Form
         }
     }
 
-    private void UpdatePreviewInteractionState() =>
-        characterSelector.SetInteractionPaused(isInteractiveResize || isScrollSettling);
+    private void ShowPage(string key)
+    {
+        var showSettings = string.Equals(key, "settings", StringComparison.Ordinal);
+        settingsPage.Visible = showSettings;
+        charactersPage.Visible = !showSettings;
+        UpdatePreviewInteractionState();
+    }
+
+    private void UpdatePreviewInteractionState()
+    {
+        currentCharacterPreview.SetInteractionPaused(
+            isInteractiveResize || isScrollSettling || !settingsPage.Visible);
+        charactersPage.SetInteractionPaused(isInteractiveResize || settingsPage.Visible);
+    }
 }

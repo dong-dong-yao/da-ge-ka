@@ -14,6 +14,8 @@ internal sealed class IconBadge : Control
         Moon,
         Chair,
         Power,
+        Gear,
+        Paw,
     }
 
     [DefaultValue(IconKind.Sun)]
@@ -92,6 +94,33 @@ internal sealed class IconBadge : Control
             case IconKind.Power:
                 g.DrawArc(pen, cx - 6, cy - 5, 12, 12, -60, 300);
                 g.DrawLine(pen, cx, cy - 7, cx, cy + 1);
+                break;
+
+            case IconKind.Gear:
+                // 齿轮外圈
+                using (var ringPen = new Pen(iconColor, 2.2f))
+                {
+                    g.DrawEllipse(ringPen, cx - 4.5f, cy - 4.5f, 9, 9);
+                }
+                // 六个齿
+                for (var i = 0; i < 6; i++)
+                {
+                    var angle = i * Math.PI / 3;
+                    var x1 = cx + (float)(Math.Cos(angle) * 6.8f);
+                    var y1 = cy + (float)(Math.Sin(angle) * 6.8f);
+                    var x2 = cx + (float)(Math.Cos(angle) * 9.2f);
+                    var y2 = cy + (float)(Math.Sin(angle) * 9.2f);
+                    g.DrawLine(pen, x1, y1, x2, y2);
+                }
+                break;
+
+            case IconKind.Paw:
+                // 主掌垫
+                g.FillEllipse(brush, cx - 4.2f, cy - 0.5f, 8.4f, 7.2f);
+                // 三个脚趾
+                g.FillEllipse(brush, cx - 6.4f, cy - 6.2f, 3.4f, 3.8f);
+                g.FillEllipse(brush, cx - 1.7f, cy - 7.6f, 3.4f, 3.8f);
+                g.FillEllipse(brush, cx + 3f, cy - 6.2f, 3.4f, 3.8f);
                 break;
         }
     }

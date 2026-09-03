@@ -81,7 +81,7 @@ public sealed class WindowBehaviorTests
 
             var scrollViewport = Descendants(form)
                 .OfType<ScrollableControl>()
-                .FirstOrDefault(control => control.AutoScroll && control.Dock == DockStyle.Fill);
+                .FirstOrDefault(control => control.AutoScroll && control.Dock == DockStyle.Fill && control.Visible);
             Assert.IsNotNull(scrollViewport, "设置内容需要位于随窗口缩放的滚动视口中。");
             Assert.IsGreaterThan(
                 scrollViewport.ClientRectangle.Height,
@@ -165,7 +165,7 @@ public sealed class WindowBehaviorTests
             form.Show();
             Application.DoEvents();
 
-            var preview = Descendants(form).OfType<PictureBox>().Single();
+            var preview = Descendants(form).OfType<PictureBox>().Single(control => control.Visible);
             Assert.IsTrue(WaitForImageChange(preview, preview.Image, 500), "测试前角色预览应处于播放状态。");
 
             InvokeInstanceMethod(form, "OnResizeBegin", EventArgs.Empty);
@@ -187,10 +187,10 @@ public sealed class WindowBehaviorTests
             form.Show();
             Application.DoEvents();
 
-            var preview = Descendants(form).OfType<PictureBox>().Single();
+            var preview = Descendants(form).OfType<PictureBox>().Single(control => control.Visible);
             var viewport = Descendants(form)
                 .OfType<ScrollableControl>()
-                .Single(control => control.AutoScroll && control.Dock == DockStyle.Fill);
+                .Single(control => control.AutoScroll && control.Dock == DockStyle.Fill && control.Visible);
             var scrollEvents = 0;
             viewport.Scroll += (_, _) => scrollEvents++;
 
@@ -221,12 +221,74 @@ public sealed class WindowBehaviorTests
 
             var viewport = Descendants(form)
                 .OfType<ScrollableControl>()
-                .Single(control => control.AutoScroll && control.Dock == DockStyle.Fill);
+                .Single(control => control.AutoScroll && control.Dock == DockStyle.Fill && control.Visible);
             var doubleBuffered = (bool)(typeof(Control).GetProperty(
                 "DoubleBuffered",
                 BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(viewport) ?? false);
 
             Assert.IsTrue(doubleBuffered, "设置页滚动视口应合并绘制操作，避免滚动时逐层闪烁和撕裂。");
+        });
+    }
+
+    [TestMethod]
+    public void SettingsWindow_SideNavigationSwitchesBetweenPages()
+    {
+        RunOnStaThread(() =>
+        {
+            using var form = CreateSettingsForm();
+            form.Show();
+            Application.DoEvents();
+
+            var settingsPage = Descendants(form)
+                .OfType<ScrollableControl>()
+                .Single(control => control.AutoScroll && control.Dock == DockStyle.Fill
+                    && control.GetType().Name == "BufferedScrollPanel");
+            var charactersPage = Descendants(form)
+                .Single(control => control.GetType().Name == "CharactersPage");
+            var sideNav = Descendants(form)
+                .Single(control => control.GetType().Name == "SideNavBar");
+
+            Assert.IsTrue(settingsPage.Visible, "默认应显示设置页。");
+            Assert.IsFalse(charactersPage.Visible, "默认角色页应隐藏。");
+
+            InvokeInstanceMethod(sideNav, "SelectPage", "characters");
+            Application.DoEvents();
+
+            Assert.IsFalse(settingsPage.Visible, "切到角色页后设置页应隐藏。");
+            Assert.IsTrue(charactersPage.Visible, "切到角色页后角色页应显示。");
+
+            InvokeInstanceMethod(sideNav, "SelectPage", "settings");
+            Application.DoEvents();
+
+            Assert.IsTrue(settingsPage.Visible, "切回设置页后设置页应显示。");
+            Assert.IsFalse(charactersPage.Visible, "切回设置页后角色页应隐藏。");
+        });
+    }
+
+    [TestMethod]
+    public void SettingsWindow_HiddenPagePreviewStaysPaused()
+    {
+        RunOnStaThread(() =>
+        {
+            using var form = CreateSettingsForm();
+            form.Show();
+            Application.DoEvents();
+
+            var sideNav = Descendants(form)
+                .Single(control => control.GetType().Name == "SideNavBar");
+            InvokeInstanceMethod(sideNav, "SelectPage", "characters");
+            Application.DoEvents();
+
+            var settingsPreview = Descendants(form)
+                .OfType<PictureBox>()
+                .Single(control => !control.Visible);
+            var imageOnHiddenPage = settingsPreview.Image;
+            PumpEvents(260);
+
+            Assert.AreSame(
+                imageOnHiddenPage,
+                settingsPreview.Image,
+                "设置页被切走隐藏后，其中的角色预览应暂停播放。");
         });
     }
 

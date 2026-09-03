@@ -53,6 +53,24 @@ public sealed class CharacterSelectionTests
         Assert.AreEqual("white-bear", selection.ConfirmedCharacterId);
     }
 
+    [TestMethod]
+    public void SelectById_SelectsExistingCharacterAndRejectsUnknownOrCurrent()
+    {
+        var selection = new CharacterSelection(
+            new[] { Character("white-bear", "白熊"), Character("cat", "小猫") },
+            "white-bear");
+
+        Assert.IsFalse(selection.SelectById("missing"));
+        Assert.IsFalse(selection.SelectById("white-bear"), "已选中的角色不需要重复选中");
+
+        Assert.IsTrue(selection.SelectById("cat"));
+        Assert.AreEqual("cat", selection.SelectedCharacter.Id);
+        Assert.AreEqual("white-bear", selection.ConfirmedCharacterId, "选中不等于确认");
+
+        Assert.AreEqual("cat", selection.Confirm());
+        Assert.AreEqual("cat", selection.ConfirmedCharacterId);
+    }
+
     private static ReminderCharacter Character(string id, string name) =>
         new(id, name, "Edge", TimeSpan.FromSeconds(1), false);
 }
