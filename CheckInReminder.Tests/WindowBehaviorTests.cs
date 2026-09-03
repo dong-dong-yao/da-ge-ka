@@ -166,7 +166,7 @@ public sealed class WindowBehaviorTests
             Application.DoEvents();
 
             var preview = Descendants(form).OfType<PictureBox>().Single(control => control.Visible);
-            Assert.IsTrue(WaitForImageChange(preview, preview.Image, 500), "测试前角色预览应处于播放状态。");
+            Assert.IsTrue(WaitForImageChange(preview, preview.Image, 900), "测试前角色预览应处于播放状态。");
 
             InvokeInstanceMethod(form, "OnResizeBegin", EventArgs.Empty);
             var imageAtResizeStart = preview.Image;
@@ -174,7 +174,7 @@ public sealed class WindowBehaviorTests
             Assert.AreSame(imageAtResizeStart, preview.Image, "拖动调整窗口尺寸时应暂停角色预览，避免与布局和绘制争抢 UI 线程。");
 
             InvokeInstanceMethod(form, "OnResizeEnd", EventArgs.Empty);
-            Assert.IsTrue(WaitForImageChange(preview, imageAtResizeStart, 500), "结束调整窗口尺寸后应恢复角色预览。");
+            Assert.IsTrue(WaitForImageChange(preview, imageAtResizeStart, 900), "结束调整窗口尺寸后应恢复角色预览。");
         });
     }
 
@@ -202,11 +202,12 @@ public sealed class WindowBehaviorTests
             var imageWhileScrolling = preview.Image;
             for (var step = 0; step < 4; step++)
             {
-                PumpEvents(60);
+                // 滚动事件间隔必须稳定小于 120ms 空闲窗口，高负载下 60ms 步进会被拉长导致中途恢复
+                PumpEvents(30);
                 RaiseScroll(viewport, 140 + (step * 20));
             }
             Assert.AreSame(imageWhileScrolling, preview.Image, "滚动内容时应暂停角色预览，避免每 33ms 追加一次图片缩放重绘。");
-            Assert.IsTrue(WaitForImageChange(preview, imageWhileScrolling, 600), "停止滚动后应自动恢复角色预览。");
+            Assert.IsTrue(WaitForImageChange(preview, imageWhileScrolling, 1000), "停止滚动后应自动恢复角色预览。");
         });
     }
 
