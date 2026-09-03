@@ -24,6 +24,9 @@ public sealed class AppSettings
 
     public string CharacterId { get; set; } = AnimationCatalog.DefaultCharacterId;
 
+    /// <summary>是否在桌面常驻宠物窗口（敲键盘时角色跟着敲）。默认关闭。</summary>
+    public bool DesktopPetEnabled { get; set; }
+
     public static AppSettings CreateDefault() => new();
 
     public AppSettings Clone() => new()
@@ -39,6 +42,7 @@ public sealed class AppSettings
         BreakEnd = BreakEnd,
         BreakIntervalMinutes = BreakIntervalMinutes,
         CharacterId = CharacterId,
+        DesktopPetEnabled = DesktopPetEnabled,
     };
 
 }

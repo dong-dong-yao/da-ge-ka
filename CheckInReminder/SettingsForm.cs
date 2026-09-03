@@ -6,7 +6,8 @@ internal sealed class SettingsForm : Form
 {
     private const int ExpandedBreakHeight = 320;
     private const int AutoStartCardHeight = 128;
-    private const int ScrollableContentHeight = 956;
+    private const int ToggleCardHeight = 128;
+    private const int ScrollableContentHeight = 1084;
     private const int SideNavWidth = 148;
     private readonly SoftTimePicker morningStartPicker;
     private readonly SoftTimePicker morningEndPicker;
@@ -18,6 +19,7 @@ internal sealed class SettingsForm : Form
     private readonly SoftTimePicker breakEndPicker;
     private readonly SoftComboBox breakIntervalBox;
     private readonly ToggleSwitch autoStartToggle;
+    private readonly ToggleSwitch desktopPetToggle;
     private readonly CurrentCharacterPreviewControl currentCharacterPreview;
     private readonly CharactersPage charactersPage;
     private readonly BufferedScrollPanel settingsPage;
@@ -72,6 +74,12 @@ internal sealed class SettingsForm : Form
             AccessibleName = "开机自启动",
             Anchor = AnchorStyles.Right,
         };
+        desktopPetToggle = new ToggleSwitch
+        {
+            Checked = settings.DesktopPetEnabled,
+            AccessibleName = "桌面宠物",
+            Anchor = AnchorStyles.Right,
+        };
         currentCharacterPreview = new CurrentCharacterPreviewControl(settings.CharacterId);
         charactersPage = new CharactersPage(settings.CharacterId)
         {
@@ -100,12 +108,17 @@ internal sealed class SettingsForm : Form
             "开机自启动",
             "登录 Windows 后自动守候提醒",
             autoStartToggle);
+        var desktopPetCard = CreateToggleCard(
+            IconBadge.IconKind.Paw,
+            "桌面宠物",
+            "常驻桌面角落，敲键盘时陪你一起敲",
+            desktopPetToggle);
 
         var leftColumn = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 4,
+            RowCount = 5,
             BackColor = Color.Transparent,
             Margin = new Padding(0, 0, 8, 0),
         };
@@ -114,10 +127,12 @@ internal sealed class SettingsForm : Form
         leftColumn.RowStyles.Add(new RowStyle(SizeType.Absolute, 208));
         leftColumn.RowStyles.Add(new RowStyle(SizeType.Absolute, ExpandedBreakHeight));
         leftColumn.RowStyles.Add(new RowStyle(SizeType.Absolute, AutoStartCardHeight));
+        leftColumn.RowStyles.Add(new RowStyle(SizeType.Absolute, ToggleCardHeight));
         AddCard(leftColumn, morningCard, 0);
         AddCard(leftColumn, eveningCard, 1);
         AddCard(leftColumn, breakCard, 2);
         AddCard(leftColumn, autoStartCard, 3);
+        AddCard(leftColumn, desktopPetCard, 4);
 
         var characterCard = new RoundedPanel
         {
@@ -475,6 +490,7 @@ internal sealed class SettingsForm : Form
             BreakEnd = breakEndPicker.Value,
             BreakIntervalMinutes = GetSelectedBreakInterval(),
             CharacterId = charactersPage.ConfirmedCharacterId,
+            DesktopPetEnabled = desktopPetToggle.Checked,
         };
 
         if (!SettingsService.TryValidate(candidate, out var validationMessage))

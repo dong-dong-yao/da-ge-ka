@@ -293,6 +293,24 @@ public sealed class WindowBehaviorTests
     }
 
     [TestMethod]
+    public void PetOverlay_StartsClickThroughAndTogglesDraggableMode()
+    {
+        RunOnStaThread(() =>
+        {
+            using var form = CreateInternalForm("CheckInReminder.PetOverlayForm", 140);
+            var clickThroughProperty = form.GetType().GetProperty("ClickThrough")!;
+
+            Assert.IsTrue((bool)clickThroughProperty.GetValue(form)!, "宠物窗口默认应鼠标穿透。");
+
+            InvokeInstanceMethod(form, "SetClickThrough", false);
+            Assert.IsFalse((bool)clickThroughProperty.GetValue(form)!, "调整位置模式下应关闭穿透。");
+
+            InvokeInstanceMethod(form, "SetClickThrough", true);
+            Assert.IsTrue((bool)clickThroughProperty.GetValue(form)!, "拖完位置后应恢复穿透。");
+        });
+    }
+
+    [TestMethod]
     public void CardHeader_RepeatedPaintingKeepsManagedAllocationBounded()
     {
         RunOnStaThread(() =>

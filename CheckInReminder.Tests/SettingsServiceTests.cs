@@ -15,6 +15,43 @@ public sealed class SettingsServiceTests
         Assert.AreEqual(new TimeOnly(18, 0), settings.BreakEnd);
         Assert.AreEqual(60, settings.BreakIntervalMinutes);
         Assert.AreEqual("white-bear", settings.CharacterId);
+        Assert.IsFalse(settings.DesktopPetEnabled, "桌面宠物默认关闭。");
+    }
+
+    [TestMethod]
+    public void Clone_PreservesDesktopPetEnabled()
+    {
+        var settings = AppSettings.CreateDefault();
+        settings.DesktopPetEnabled = true;
+
+        var clone = settings.Clone();
+
+        Assert.IsTrue(clone.DesktopPetEnabled);
+        clone.DesktopPetEnabled = false;
+        Assert.IsTrue(settings.DesktopPetEnabled, "Clone 必须是独立副本。");
+    }
+
+    [TestMethod]
+    public void SaveAndLoad_RoundTripsDesktopPetEnabled()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"dagaka-tests-{Guid.NewGuid():N}");
+        var path = Path.Combine(directory, "config.json");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var service = new SettingsService(path);
+            var settings = AppSettings.CreateDefault();
+            settings.DesktopPetEnabled = true;
+            service.Save(settings);
+
+            var loaded = service.Load();
+
+            Assert.IsTrue(loaded.DesktopPetEnabled);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
     }
 
     [TestMethod]
@@ -57,6 +94,7 @@ public sealed class SettingsServiceTests
             Assert.AreEqual(new TimeOnly(18, 0), settings.BreakEnd);
             Assert.AreEqual(60, settings.BreakIntervalMinutes);
             Assert.AreEqual("white-bear", settings.CharacterId);
+            Assert.IsFalse(settings.DesktopPetEnabled, "旧配置缺少该字段时应回退为默认关闭。");
         }
         finally
         {

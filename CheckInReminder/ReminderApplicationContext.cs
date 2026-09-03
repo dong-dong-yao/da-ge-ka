@@ -16,6 +16,10 @@ internal sealed class ReminderApplicationContext : ApplicationContext
     private SettingsForm? settingsForm;
     private AnimatedReminderSession? reminder;
     private EveningConfirmForm? confirm;
+    private PetOverlayForm? desktopPetForm;
+    private AnimationSequence? desktopPetSequence;
+    private ToolStripMenuItem? desktopPetItem;
+    private ToolStripMenuItem? adjustPetPositionItem;
     private bool morningCompleted;
     private bool eveningCompleted;
     private bool isExiting;
@@ -35,6 +39,21 @@ internal sealed class ReminderApplicationContext : ApplicationContext
             Padding = new Padding(16, 7, 24, 7),
         };
         settingsItem.Click += (_, _) => OpenSettings();
+        desktopPetItem = new ToolStripMenuItem("桌面宠物")
+        {
+            Padding = new Padding(16, 7, 24, 7),
+            CheckOnClick = true,
+            Checked = settings.DesktopPetEnabled,
+        };
+        desktopPetItem.CheckedChanged += (_, _) => ToggleDesktopPetFromTray();
+        adjustPetPositionItem = new ToolStripMenuItem("调整宠物位置")
+        {
+            Padding = new Padding(16, 7, 24, 7),
+            CheckOnClick = true,
+            Enabled = settings.DesktopPetEnabled,
+        };
+        adjustPetPositionItem.CheckedChanged += (_, _) =>
+            desktopPetForm?.SetClickThrough(!adjustPetPositionItem.Checked);
         var exitItem = new ToolStripMenuItem("退出程序")
         {
             Padding = new Padding(16, 7, 24, 7),
@@ -51,6 +70,8 @@ internal sealed class ReminderApplicationContext : ApplicationContext
             Padding = new Padding(3),
         };
         trayMenu.Items.Add(settingsItem);
+        trayMenu.Items.Add(desktopPetItem);
+        trayMenu.Items.Add(adjustPetPositionItem);
         trayMenu.Items.Add(exitItem);
 
         notifyIcon = new NotifyIcon
@@ -76,6 +97,11 @@ internal sealed class ReminderApplicationContext : ApplicationContext
         SystemEvents.PowerModeChanged += OnPowerModeChanged;
         SystemEvents.SessionSwitch += OnSessionSwitch;
         Application.Idle += StartSchedulerOnIdle;
+
+        if (settings.DesktopPetEnabled)
+        {
+            ApplyDesktopPet(true);
+        }
     }
 
     private void StartSchedulerOnIdle(object? sender, EventArgs eventArgs)
@@ -107,6 +133,7 @@ internal sealed class ReminderApplicationContext : ApplicationContext
 
     private string? SaveSettings(AppSettings candidate)
     {
+        var previousCharacterId = settings.CharacterId;
         try
         {
             settingsService.Save(candidate);
@@ -121,10 +148,89 @@ internal sealed class ReminderApplicationContext : ApplicationContext
             return $"配置保存失败：{exception.Message}";
         }
 
+        ApplyDesktopPet(settings.DesktopPetEnabled);
+        if (desktopPetForm is not null &&
+            !string.Equals(previousCharacterId, settings.CharacterId, StringComparison.Ordinal))
+        {
+            LoadDesktopPetCharacter();
+        }
+
         var autoStartApplied = autoStartService.Apply(settings.AutoStart, out var autoStartError);
         scheduler.ApplySettings(settings, DateTime.Now);
         UpdateShutdownBlockRegistration(DateTime.Now);
         return autoStartApplied ? null : autoStartError;
+    }
+
+    private bool updatingPetMenuItem;
+
+    private void ToggleDesktopPetFromTray()
+    {
+        if (updatingPetMenuItem || desktopPetItem is null)
+        {
+            return;
+        }
+
+        var candidate = settings.Clone();
+        candidate.DesktopPetEnabled = desktopPetItem.Checked;
+        var saveError = SaveSettings(candidate);
+        if (saveError is not null)
+        {
+            updatingPetMenuItem = true;
+            desktopPetItem.Checked = settings.DesktopPetEnabled;
+            updatingPetMenuItem = false;
+        }
+    }
+
+    private void ApplyDesktopPet(bool enabled)
+    {
+        if (desktopPetItem is not null && desktopPetItem.Checked != enabled)
+        {
+            updatingPetMenuItem = true;
+            desktopPetItem.Checked = enabled;
+            updatingPetMenuItem = false;
+        }
+        if (adjustPetPositionItem is not null)
+        {
+            if (!enabled)
+            {
+                adjustPetPositionItem.Checked = false;
+            }
+
+            adjustPetPositionItem.Enabled = enabled;
+        }
+
+        if (enabled && desktopPetForm is null)
+        {
+            LoadDesktopPetCharacter();
+        }
+        else if (!enabled && desktopPetForm is not null)
+        {
+            desktopPetForm.Close();
+            desktopPetForm.Dispose();
+            desktopPetForm = null;
+            desktopPetSequence?.Dispose();
+            desktopPetSequence = null;
+        }
+    }
+
+    private void LoadDesktopPetCharacter()
+    {
+        var character = AnimationCatalog.FindCharacter(settings.CharacterId)
+            ?? AnimationCatalog.Characters[0];
+        desktopPetSequence?.Dispose();
+        // 骨架阶段：用提醒动画第 0 帧做静帧占位；敲击动画在钩子接入后播放
+        desktopPetSequence = AnimationSequence.Load(character.SequenceName, character.Duration, character.Loop);
+        if (desktopPetForm is null)
+        {
+            desktopPetForm = new PetOverlayForm();
+            desktopPetForm.SetFrame(desktopPetSequence.Frames[0]);
+            desktopPetForm.Show();
+            desktopPetForm.SetClickThrough(adjustPetPositionItem?.Checked != true);
+        }
+        else
+        {
+            desktopPetForm.SetFrame(desktopPetSequence.Frames[0]);
+        }
     }
 
     private void RequestReminder(ReminderKind kind)
@@ -289,6 +395,11 @@ internal sealed class ReminderApplicationContext : ApplicationContext
             confirm = null;
             settingsForm?.Close();
             settingsForm = null;
+            desktopPetForm?.Close();
+            desktopPetForm?.Dispose();
+            desktopPetForm = null;
+            desktopPetSequence?.Dispose();
+            desktopPetSequence = null;
             shutdownGuard.CloseForExit();
             shutdownGuard.Dispose();
             notifyIcon.Visible = false;
