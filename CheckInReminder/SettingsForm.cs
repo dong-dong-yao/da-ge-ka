@@ -23,6 +23,7 @@ internal sealed class SettingsForm : Form
     private readonly CurrentCharacterPreviewControl currentCharacterPreview;
     private readonly CharactersPage charactersPage;
     private readonly BufferedScrollPanel settingsPage;
+    private readonly CompositedPageHost pageHost;
     private readonly SideNavBar sideNav;
     private readonly Panel breakDetails;
     private readonly System.Windows.Forms.Timer openingTimer;
@@ -179,7 +180,7 @@ internal sealed class SettingsForm : Form
         sideNav.NavigationRequested += (_, key) => ShowPage(key);
         currentCharacterPreview.ChangeCharacterRequested += (_, _) => sideNav.SelectPage("characters");
 
-        var pageHost = new Panel
+        pageHost = new CompositedPageHost
         {
             Dock = DockStyle.Fill,
             BackColor = Color.Transparent,
@@ -597,8 +598,10 @@ internal sealed class SettingsForm : Form
     private void ShowPage(string key)
     {
         var showSettings = string.Equals(key, "settings", StringComparison.Ordinal);
-        settingsPage.Visible = showSettings;
-        charactersPage.Visible = !showSettings;
+        pageHost.ShowOnly(
+            showSettings ? settingsPage : charactersPage,
+            settingsPage,
+            charactersPage);
         UpdatePreviewInteractionState();
     }
 

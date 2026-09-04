@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Assets\Animations\**\*.png" />
+    <EmbeddedResource Include="Assets\DesktopPet\**\*.jpg" />
   </ItemGroup>
 
 </Project>

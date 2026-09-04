@@ -40,12 +40,18 @@ internal sealed class CharacterCardControl : UserControl
         };
         var previewShell = new Panel
         {
-            Dock = DockStyle.Fill,
             BackColor = UiTheme.AccentSoftColor,
             Padding = new Padding(10),
-            Margin = new Padding(0, 0, 0, 10),
+            Margin = Padding.Empty,
+            AccessibleName = "角色预览占位图",
         };
         previewShell.Controls.Add(previewBox);
+        var previewAspect = new AspectRatioPanel(16d / 9d)
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0, 0, 0, 10),
+        };
+        previewAspect.Controls.Add(previewShell);
 
         var nameRow = new TableLayoutPanel
         {
@@ -99,7 +105,7 @@ internal sealed class CharacterCardControl : UserControl
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
-        layout.Controls.Add(previewShell, 0, 0);
+        layout.Controls.Add(previewAspect, 0, 0);
         layout.Controls.Add(nameRow, 0, 1);
         layout.Controls.Add(confirmButton, 0, 2);
         card.Controls.Add(layout);

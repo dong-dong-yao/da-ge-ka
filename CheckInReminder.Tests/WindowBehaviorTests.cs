@@ -232,6 +232,29 @@ public sealed class WindowBehaviorTests
     }
 
     [TestMethod]
+    public void SettingsWindow_PageHostCompositesChildWindows()
+    {
+        RunOnStaThread(() =>
+        {
+            using var form = CreateSettingsForm();
+            form.Show();
+            Application.DoEvents();
+
+            var pageHost = Descendants(form)
+                .Single(control => control.GetType().Name == "CompositedPageHost");
+            var createParams = (CreateParams)pageHost.GetType().GetProperty(
+                "CreateParams",
+                BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(pageHost)!;
+
+            const int wsExComposited = 0x02000000;
+            Assert.AreNotEqual(
+                0,
+                createParams.ExStyle & wsExComposited,
+                "复杂页面区域应由 Windows 合成所有子窗口后一次呈现，避免缩放和换页暴露半绘制状态。");
+        });
+    }
+
+    [TestMethod]
     public void SettingsWindow_SideNavigationSwitchesBetweenPages()
     {
         RunOnStaThread(() =>
@@ -290,6 +313,31 @@ public sealed class WindowBehaviorTests
                 imageOnHiddenPage,
                 settingsPreview.Image,
                 "设置页被切走隐藏后，其中的角色预览应暂停播放。");
+        });
+    }
+
+    [TestMethod]
+    public void SettingsWindow_CharacterPreviewPlaceholderKeepsSixteenByNineRatio()
+    {
+        RunOnStaThread(() =>
+        {
+            using var form = CreateSettingsForm();
+            form.Show();
+            Application.DoEvents();
+
+            var sideNav = Descendants(form)
+                .Single(control => control.GetType().Name == "SideNavBar");
+            InvokeInstanceMethod(sideNav, "SelectPage", "characters");
+            Application.DoEvents();
+
+            var placeholder = Descendants(form)
+                .Single(control => control.Visible && control.AccessibleName == "角色预览占位图");
+            AssertAspectRatio(placeholder, 16d / 9d);
+
+            form.Size = new Size(form.Width + 360, form.Height);
+            Application.DoEvents();
+
+            AssertAspectRatio(placeholder, 16d / 9d);
         });
     }
 
@@ -419,6 +467,17 @@ public sealed class WindowBehaviorTests
     {
         var topLeft = form.PointToClient(control.PointToScreen(Point.Empty));
         return topLeft.X + control.Width;
+    }
+
+    private static void AssertAspectRatio(Control control, double expected)
+    {
+        Assert.IsGreaterThan(0, control.Height);
+        var actual = control.Width / (double)control.Height;
+        Assert.AreEqual(
+            expected,
+            actual,
+            0.03,
+            $"角色预览占位图应保持固定比例；当前尺寸为 {control.Width}x{control.Height}。");
     }
 
     private static bool WaitForImageChange(PictureBox pictureBox, Image? original, int timeoutMilliseconds)

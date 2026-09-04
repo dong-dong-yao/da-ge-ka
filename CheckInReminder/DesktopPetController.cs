@@ -51,6 +51,17 @@ public sealed class DesktopPetController : IDisposable
         machine.OnSilence();
         silenceClock.Reset();
 
+        if (string.Equals(character.Id, AnimationCatalog.DefaultCharacterId, StringComparison.Ordinal))
+        {
+            (placeholderIdle, placeholderTapLeft, placeholderTapRight) =
+                DesktopPetArtwork.LoadWhiteBearTypingFrames();
+            currentFrame = -1;
+            sink.SetFrame(placeholderIdle);
+            frameTimer.Stop();
+            playbackClock.Reset();
+            return;
+        }
+
         if (character.HasPetAssets)
         {
             idleSequence = AnimationSequence.Load(character.PetIdleSequenceName, character.PetIdleDuration, loop: true);
@@ -67,13 +78,48 @@ public sealed class DesktopPetController : IDisposable
 
         // 占位模式：待机是静帧（零 CPU），敲击时直接呈现左右派生帧
         using var reminder = AnimationSequence.Load(character.SequenceName, character.Duration, character.Loop);
-        placeholderIdle = new Bitmap(reminder.Frames[0]);
+        placeholderIdle = new Bitmap(SelectMostVisibleFrame(reminder.Frames));
         placeholderTapLeft = FlipHorizontal(placeholderIdle);
         placeholderTapRight = OffsetVertical(placeholderIdle, 6);
         currentFrame = -1;
         sink.SetFrame(placeholderIdle);
         frameTimer.Stop();
         playbackClock.Reset();
+    }
+
+    private static Bitmap SelectMostVisibleFrame(IReadOnlyList<Bitmap> frames)
+    {
+        var bestFrame = frames[0];
+        var bestScore = -1;
+        foreach (var frame in frames)
+        {
+            var score = VisibleSampleCount(frame);
+            if (score > bestScore)
+            {
+                bestScore = score;
+                bestFrame = frame;
+            }
+        }
+
+        return bestFrame;
+    }
+
+    private static int VisibleSampleCount(Bitmap frame)
+    {
+        const int sampleStep = 4;
+        var score = 0;
+        for (var y = 0; y < frame.Height; y += sampleStep)
+        {
+            for (var x = 0; x < frame.Width; x += sampleStep)
+            {
+                if (frame.GetPixel(x, y).A >= 32)
+                {
+                    score++;
+                }
+            }
+        }
+
+        return score;
     }
 
     /// <summary>一次按键（已由钩子侧节流合并）。</summary>

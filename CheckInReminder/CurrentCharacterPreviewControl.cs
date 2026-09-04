@@ -52,12 +52,18 @@ internal sealed class CurrentCharacterPreviewControl : UserControl
         };
         var previewShell = new Panel
         {
-            Dock = DockStyle.Fill,
             BackColor = UiTheme.AccentSoftColor,
             Padding = new Padding(12),
-            Margin = new Padding(0, 2, 0, 14),
+            Margin = Padding.Empty,
+            AccessibleName = "角色预览占位图",
         };
         previewShell.Controls.Add(previewBox);
+        var previewAspect = new AspectRatioPanel(16d / 9d)
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0, 2, 0, 14),
+        };
+        previewAspect.Controls.Add(previewShell);
 
         nameLabel = new Label
         {
@@ -103,7 +109,7 @@ internal sealed class CurrentCharacterPreviewControl : UserControl
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 56));
         layout.Controls.Add(title, 0, 0);
         layout.Controls.Add(subtitle, 0, 1);
-        layout.Controls.Add(previewShell, 0, 2);
+        layout.Controls.Add(previewAspect, 0, 2);
         layout.Controls.Add(nameLabel, 0, 3);
         layout.Controls.Add(statusLabel, 0, 4);
         layout.Controls.Add(changeButton, 0, 5);

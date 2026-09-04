@@ -9,4 +9,6 @@ coverage/
 release/
 .watch-review/
 .workbuddy/
+.worktrees/
+.superpowers/
 docs/*交接*.md
