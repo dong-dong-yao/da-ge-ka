@@ -53,8 +53,17 @@ public sealed class DesktopPetController : IDisposable
 
         if (string.Equals(character.Id, AnimationCatalog.DefaultCharacterId, StringComparison.Ordinal))
         {
-            (placeholderIdle, placeholderTapLeft, placeholderTapRight) =
-                DesktopPetArtwork.LoadWhiteBearTypingFrames();
+            using var renderer = WhiteBearRigRenderer.Load();
+            placeholderIdle = renderer.Render(DesktopPetRigPose.Rest);
+            placeholderTapLeft = renderer.Render(DesktopPetRigPose.Rest with
+            {
+                MouseOffset = new PointF(-1, 1), MouseRotationDegrees = -2.5f,
+                MousePress = 1f, KeyboardPress = 1f
+            });
+            placeholderTapRight = renderer.Render(DesktopPetRigPose.Rest with
+            {
+                KeyboardTarget = new PointF(0.8f, 0.7f), KeyboardPress = 1f
+            });
             currentFrame = -1;
             sink.SetFrame(placeholderIdle);
             frameTimer.Stop();

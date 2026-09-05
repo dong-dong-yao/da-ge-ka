@@ -8,7 +8,11 @@ public readonly record struct DesktopPetRigPose(
     float MousePress,
     PointF KeyboardTarget,
     float KeyboardPress,
-    bool IsAtRest);
+    bool IsAtRest)
+{
+    public static DesktopPetRigPose Rest => new(
+        PointF.Empty, 0f, 0f, new PointF(0.64f, 0.34f), 0f, true);
+}
 
 /// <summary>
 /// Converts transient desktop input into a smoothly damped render pose.
