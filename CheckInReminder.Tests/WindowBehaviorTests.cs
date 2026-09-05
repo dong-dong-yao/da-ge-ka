@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Runtime.ExceptionServices;
+using System.Runtime.InteropServices;
 using CheckInReminder;
 
 namespace CheckInReminder.Tests;
@@ -360,6 +361,151 @@ public sealed class WindowBehaviorTests
     }
 
     [TestMethod]
+    public void GlobalInputService_DisposeUnhooksBothInstalledHooksExactlyOnce()
+    {
+        var serviceType = typeof(AppSettings).Assembly.GetType(
+            "CheckInReminder.GlobalInputService",
+            throwOnError: true)!;
+        var installedHookTypes = new List<int>();
+        var uninstalledHandles = new List<IntPtr>();
+        Func<int, Delegate, IntPtr> installHook = (hookType, _) =>
+        {
+            installedHookTypes.Add(hookType);
+            return hookType == 13 ? (IntPtr)101 : (IntPtr)202;
+        };
+        Func<IntPtr, bool> uninstallHook = handle =>
+        {
+            uninstalledHandles.Add(handle);
+            return true;
+        };
+        using var service = (IDisposable)(Activator.CreateInstance(
+            serviceType,
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+            binder: null,
+            args: [new DesktopInputState(), installHook, uninstallHook],
+            culture: null) ?? throw new InvalidOperationException("无法创建 GlobalInputService。"));
+
+        var installResult = serviceType.GetMethod("Install")!.Invoke(service, null)!;
+        var success = (bool)installResult.GetType().GetProperty("Success")!.GetValue(installResult)!;
+        var keyboardHandle = (IntPtr)serviceType.GetField(
+            "keyboardHookHandle",
+            BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(service)!;
+        var mouseHandle = (IntPtr)serviceType.GetField(
+            "mouseHookHandle",
+            BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(service)!;
+
+        Assert.IsTrue(success);
+        CollectionAssert.AreEqual(new[] { 13, 14 }, installedHookTypes);
+        Assert.AreEqual((IntPtr)101, keyboardHandle);
+        Assert.AreEqual((IntPtr)202, mouseHandle);
+        Assert.AreNotEqual(keyboardHandle, mouseHandle);
+
+        service.Dispose();
+        service.Dispose();
+
+        CollectionAssert.AreEquivalent(
+            new[] { (IntPtr)101, (IntPtr)202 },
+            uninstalledHandles,
+            "释放应恰好各卸载一次键盘与鼠标钩子。除此之外不应重复卸载。" );
+    }
+
+    [TestMethod]
+    public void GlobalInputService_SecondHookFailureRollsBackFirstHook()
+    {
+        var serviceType = typeof(AppSettings).Assembly.GetType(
+            "CheckInReminder.GlobalInputService",
+            throwOnError: true)!;
+        var uninstalledHandles = new List<IntPtr>();
+        Func<int, Delegate, IntPtr> installHook = (hookType, _) =>
+        {
+            if (hookType == 13)
+            {
+                return (IntPtr)303;
+            }
+
+            Marshal.SetLastPInvokeError(87);
+            return IntPtr.Zero;
+        };
+        Func<IntPtr, bool> uninstallHook = handle =>
+        {
+            uninstalledHandles.Add(handle);
+            return true;
+        };
+        using var service = (IDisposable)(Activator.CreateInstance(
+            serviceType,
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+            binder: null,
+            args: [new DesktopInputState(), installHook, uninstallHook],
+            culture: null) ?? throw new InvalidOperationException("无法创建 GlobalInputService。"));
+
+        var installResult = serviceType.GetMethod("Install")!.Invoke(service, null)!;
+        var success = (bool)installResult.GetType().GetProperty("Success")!.GetValue(installResult)!;
+        var win32Error = (int)installResult.GetType().GetProperty("Win32Error")!.GetValue(installResult)!;
+        var isInstalled = (bool)serviceType.GetProperty("IsInstalled")!.GetValue(service)!;
+
+        Assert.IsFalse(success);
+        Assert.AreEqual(87, win32Error);
+        Assert.IsFalse(isInstalled);
+        CollectionAssert.AreEqual(new[] { (IntPtr)303 }, uninstalledHandles);
+    }
+
+    [TestMethod]
+    public void GlobalInputService_CallbacksUpdateStateAndPostNotificationToInstallingContext()
+    {
+        var serviceType = typeof(AppSettings).Assembly.GetType(
+            "CheckInReminder.GlobalInputService",
+            throwOnError: true)!;
+        var state = new DesktopInputState();
+        var callbacks = new Dictionary<int, Delegate>();
+        var context = new QueuedSynchronizationContext();
+        var previousContext = SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(context);
+        try
+        {
+            Func<int, Delegate, IntPtr> installHook = (hookType, callback) =>
+            {
+                callbacks.Add(hookType, callback);
+                return hookType == 13 ? (IntPtr)401 : (IntPtr)402;
+            };
+            using var service = (IDisposable)(Activator.CreateInstance(
+                serviceType,
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+                binder: null,
+                args: [state, installHook, new Func<IntPtr, bool>(_ => true)],
+                culture: null) ?? throw new InvalidOperationException("无法创建 GlobalInputService。"));
+            serviceType.GetMethod("Install")!.Invoke(service, null);
+            var notifiedThread = -1;
+            var handler = new EventHandler((_, _) => notifiedThread = Environment.CurrentManagedThreadId);
+            serviceType.GetEvent("InputAvailable")!.AddEventHandler(service, handler);
+
+            using var keyboardData = new NativeBuffer(sizeof(int));
+            Marshal.WriteInt32(keyboardData.Pointer, 65);
+            Task.Run(() => callbacks[13].DynamicInvoke(0, (IntPtr)0x0100, keyboardData.Pointer))
+                .GetAwaiter().GetResult();
+
+            var keySnapshot = state.ReadSnapshot();
+            Assert.AreEqual(65, keySnapshot.ActiveVirtualKey);
+            Assert.AreEqual(-1, notifiedThread, "钩子线程不应直接调用订阅者。" );
+            context.RunOne();
+            Assert.AreEqual(Environment.CurrentManagedThreadId, notifiedThread);
+
+            using var mouseData = new NativeBuffer(sizeof(int) * 2);
+            Marshal.WriteInt32(mouseData.Pointer, 0, 120);
+            Marshal.WriteInt32(mouseData.Pointer, sizeof(int), 240);
+            Task.Run(() => callbacks[14].DynamicInvoke(0, (IntPtr)0x0201, mouseData.Pointer))
+                .GetAwaiter().GetResult();
+
+            var mouseSnapshot = state.ReadSnapshot();
+            Assert.AreEqual(new Point(120, 240), mouseSnapshot.CursorScreen);
+            Assert.IsTrue(mouseSnapshot.LeftButtonDown);
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previousContext);
+        }
+    }
+
+    [TestMethod]
     public void CardHeader_RepeatedPaintingKeepsManagedAllocationBounded()
     {
         RunOnStaThread(() =>
@@ -538,5 +684,28 @@ public sealed class WindowBehaviorTests
         {
             ExceptionDispatchInfo.Capture(failure).Throw();
         }
+    }
+
+    private sealed class QueuedSynchronizationContext : SynchronizationContext
+    {
+        private readonly Queue<(SendOrPostCallback Callback, object? State)> callbacks = new();
+
+        public override void Post(SendOrPostCallback callback, object? state) =>
+            callbacks.Enqueue((callback, state));
+
+        public void RunOne()
+        {
+            var (callback, state) = callbacks.Dequeue();
+            callback(state);
+        }
+    }
+
+    private sealed class NativeBuffer : IDisposable
+    {
+        public NativeBuffer(int byteCount) => Pointer = Marshal.AllocHGlobal(byteCount);
+
+        public IntPtr Pointer { get; }
+
+        public void Dispose() => Marshal.FreeHGlobal(Pointer);
     }
 }
