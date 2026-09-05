@@ -406,7 +406,7 @@ public sealed class WindowBehaviorTests
         CollectionAssert.AreEquivalent(
             new[] { (IntPtr)101, (IntPtr)202 },
             uninstalledHandles,
-            "释放应恰好各卸载一次键盘与鼠标钩子。除此之外不应重复卸载。" );
+            "释放应恰好各卸载一次键盘与鼠标钩子。除此之外不应重复卸载。");
     }
 
     [TestMethod]
@@ -450,16 +450,15 @@ public sealed class WindowBehaviorTests
     }
 
     [TestMethod]
-    public void GlobalInputService_CallbacksUpdateStateAndPostNotificationToInstallingContext()
+    public void GlobalInputService_CallbackUpdatesStateBeforeSynchronousNotificationWithoutContext()
     {
         var serviceType = typeof(AppSettings).Assembly.GetType(
             "CheckInReminder.GlobalInputService",
             throwOnError: true)!;
         var state = new DesktopInputState();
         var callbacks = new Dictionary<int, Delegate>();
-        var context = new QueuedSynchronizationContext();
         var previousContext = SynchronizationContext.Current;
-        SynchronizationContext.SetSynchronizationContext(context);
+        SynchronizationContext.SetSynchronizationContext(null);
         try
         {
             Func<int, Delegate, IntPtr> installHook = (hookType, callback) =>
@@ -474,30 +473,37 @@ public sealed class WindowBehaviorTests
                 args: [state, installHook, new Func<IntPtr, bool>(_ => true)],
                 culture: null) ?? throw new InvalidOperationException("无法创建 GlobalInputService。"));
             serviceType.GetMethod("Install")!.Invoke(service, null);
+            var notificationCount = 0;
             var notifiedThread = -1;
-            var handler = new EventHandler((_, _) => notifiedThread = Environment.CurrentManagedThreadId);
+            var snapshotWhenNotified = default(DesktopInputSnapshot);
+            var handler = new EventHandler((_, _) =>
+            {
+                notificationCount++;
+                notifiedThread = Environment.CurrentManagedThreadId;
+                snapshotWhenNotified = state.ReadSnapshot();
+            });
             serviceType.GetEvent("InputAvailable")!.AddEventHandler(service, handler);
 
             using var keyboardData = new NativeBuffer(sizeof(int));
             Marshal.WriteInt32(keyboardData.Pointer, 65);
-            Task.Run(() => callbacks[13].DynamicInvoke(0, (IntPtr)0x0100, keyboardData.Pointer))
-                .GetAwaiter().GetResult();
+            var callbackThread = Environment.CurrentManagedThreadId;
+            callbacks[13].DynamicInvoke(0, (IntPtr)0x0100, keyboardData.Pointer);
 
-            var keySnapshot = state.ReadSnapshot();
-            Assert.AreEqual(65, keySnapshot.ActiveVirtualKey);
-            Assert.AreEqual(-1, notifiedThread, "钩子线程不应直接调用订阅者。" );
-            context.RunOne();
+            Assert.AreEqual(1, notificationCount);
+            Assert.AreEqual(65, snapshotWhenNotified.ActiveVirtualKey, "通知前应已更新无文本键盘状态。");
+            Assert.AreEqual(callbackThread, notifiedThread, "低级 Hook 回调应在安装线程同步通知轻量消费者。");
             Assert.AreEqual(Environment.CurrentManagedThreadId, notifiedThread);
 
             using var mouseData = new NativeBuffer(sizeof(int) * 2);
             Marshal.WriteInt32(mouseData.Pointer, 0, 120);
             Marshal.WriteInt32(mouseData.Pointer, sizeof(int), 240);
-            Task.Run(() => callbacks[14].DynamicInvoke(0, (IntPtr)0x0201, mouseData.Pointer))
-                .GetAwaiter().GetResult();
+            callbacks[14].DynamicInvoke(0, (IntPtr)0x0201, mouseData.Pointer);
 
             var mouseSnapshot = state.ReadSnapshot();
             Assert.AreEqual(new Point(120, 240), mouseSnapshot.CursorScreen);
             Assert.IsTrue(mouseSnapshot.LeftButtonDown);
+            Assert.AreEqual(2, notificationCount);
+            Assert.AreEqual(callbackThread, notifiedThread);
         }
         finally
         {
@@ -683,20 +689,6 @@ public sealed class WindowBehaviorTests
         if (failure is not null)
         {
             ExceptionDispatchInfo.Capture(failure).Throw();
-        }
-    }
-
-    private sealed class QueuedSynchronizationContext : SynchronizationContext
-    {
-        private readonly Queue<(SendOrPostCallback Callback, object? State)> callbacks = new();
-
-        public override void Post(SendOrPostCallback callback, object? state) =>
-            callbacks.Enqueue((callback, state));
-
-        public void RunOne()
-        {
-            var (callback, state) = callbacks.Dequeue();
-            callback(state);
         }
     }
 

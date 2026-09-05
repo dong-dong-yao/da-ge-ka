@@ -6,7 +6,7 @@ internal readonly record struct GlobalInputInstallResult(bool Success, int Win32
 
 /// <summary>
 /// Captures transient keyboard and mouse state without translating keys to text.
-/// Subscribers are notified on the synchronization context that installs the hooks.
+/// Low-level hooks execute on their installing thread; subscribers must only wake a timer.
 /// </summary>
 internal sealed class GlobalInputService : IDisposable
 {
@@ -27,7 +27,6 @@ internal sealed class GlobalInputService : IDisposable
     private readonly Func<IntPtr, bool> uninstallHook;
     private readonly LowLevelHookProc keyboardHookProc;
     private readonly LowLevelHookProc mouseHookProc;
-    private SynchronizationContext? installContext;
     private IntPtr keyboardHookHandle;
     private IntPtr mouseHookHandle;
     private bool disposed;
@@ -65,12 +64,10 @@ internal sealed class GlobalInputService : IDisposable
             return new GlobalInputInstallResult(true, 0);
         }
 
-        installContext = SynchronizationContext.Current;
         keyboardHookHandle = installHook(WhKeyboardLl, keyboardHookProc);
         if (keyboardHookHandle == IntPtr.Zero)
         {
             var error = Marshal.GetLastWin32Error();
-            installContext = null;
             return new GlobalInputInstallResult(false, error);
         }
 
@@ -80,7 +77,6 @@ internal sealed class GlobalInputService : IDisposable
             var error = Marshal.GetLastWin32Error();
             uninstallHook(keyboardHookHandle);
             keyboardHookHandle = IntPtr.Zero;
-            installContext = null;
             return new GlobalInputInstallResult(false, error);
         }
 
@@ -98,7 +94,7 @@ internal sealed class GlobalInputService : IDisposable
                 {
                     var virtualKey = Marshal.ReadInt32(lParam);
                     state.UpdateKey(virtualKey, message is WmKeyDown or WmSysKeyDown);
-                    PostInputAvailable();
+                    InputAvailable?.Invoke(this, EventArgs.Empty);
                 }
             }
         }
@@ -130,7 +126,7 @@ internal sealed class GlobalInputService : IDisposable
                         state.UpdateMouseButton(DesktopMouseButton.Right, message == WmRightButtonDown);
                     }
 
-                    PostInputAvailable();
+                    InputAvailable?.Invoke(this, EventArgs.Empty);
                 }
             }
         }
@@ -140,24 +136,6 @@ internal sealed class GlobalInputService : IDisposable
         }
 
         return CallNextHookEx(mouseHookHandle, nCode, wParam, lParam);
-    }
-
-    private void PostInputAvailable()
-    {
-        var context = installContext;
-        if (context is null)
-        {
-            return;
-        }
-
-        context.Post(static service =>
-        {
-            var inputService = (GlobalInputService)service!;
-            if (!inputService.disposed && inputService.IsInstalled)
-            {
-                inputService.InputAvailable?.Invoke(inputService, EventArgs.Empty);
-            }
-        }, this);
     }
 
     public void Dispose()
@@ -172,7 +150,6 @@ internal sealed class GlobalInputService : IDisposable
         var mouseHandle = mouseHookHandle;
         keyboardHookHandle = IntPtr.Zero;
         mouseHookHandle = IntPtr.Zero;
-        installContext = null;
 
         if (keyboardHandle != IntPtr.Zero)
         {
@@ -205,21 +182,4 @@ internal sealed class GlobalInputService : IDisposable
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern IntPtr GetModuleHandle(string? moduleName);
-}
-
-// Task 5 replaces the remaining application-context reference. This inert boundary keeps
-// the staged Task 3 commit buildable without retaining or installing the former hook.
-internal sealed class KeyboardHookService : IDisposable
-{
-    public event EventHandler? KeyTapped
-    {
-        add { }
-        remove { }
-    }
-
-    public bool Install() => false;
-
-    public void Dispose()
-    {
-    }
 }

@@ -12,13 +12,14 @@ internal sealed class ReminderApplicationContext : ApplicationContext
     private readonly ReminderScheduler scheduler;
     private readonly ShutdownGuardForm shutdownGuard;
     private readonly ReminderQueue reminderQueue = new();
+    private readonly DesktopInputState desktopInputState = new();
     private AppSettings settings;
     private SettingsForm? settingsForm;
     private AnimatedReminderSession? reminder;
     private EveningConfirmForm? confirm;
     private PetOverlayForm? desktopPetForm;
     private DesktopPetController? desktopPetController;
-    private KeyboardHookService? keyboardHook;
+    private GlobalInputService? globalInput;
     private ToolStripMenuItem? desktopPetItem;
     private ToolStripMenuItem? adjustPetPositionItem;
     private bool morningCompleted;
@@ -207,19 +208,19 @@ internal sealed class ReminderApplicationContext : ApplicationContext
             LoadDesktopPetCharacter();
             desktopPetForm.Show();
             desktopPetForm.SetClickThrough(adjustPetPositionItem?.Checked != true);
-            keyboardHook = new KeyboardHookService();
-            keyboardHook.KeyTapped += (_, _) => desktopPetController?.OnKeyTapped();
-            if (!keyboardHook.Install())
+            globalInput = new GlobalInputService(desktopInputState);
+            var installResult = globalInput.Install();
+            if (!installResult.Success)
             {
-                // 被杀软等拦截时静默降级：宠物保留待机显示，仅不响应按键
-                keyboardHook.Dispose();
-                keyboardHook = null;
+                // 被杀软等拦截时静默降级：宠物保留待机显示，仅不响应全局输入
+                globalInput.Dispose();
+                globalInput = null;
             }
         }
         else if (!enabled && desktopPetForm is not null)
         {
-            keyboardHook?.Dispose();
-            keyboardHook = null;
+            globalInput?.Dispose();
+            globalInput = null;
             desktopPetController?.Dispose();
             desktopPetController = null;
             desktopPetForm.Close();
@@ -397,8 +398,8 @@ internal sealed class ReminderApplicationContext : ApplicationContext
             confirm = null;
             settingsForm?.Close();
             settingsForm = null;
-            keyboardHook?.Dispose();
-            keyboardHook = null;
+            globalInput?.Dispose();
+            globalInput = null;
             desktopPetController?.Dispose();
             desktopPetController = null;
             desktopPetForm?.Close();
