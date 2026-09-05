@@ -33,4 +33,29 @@ public sealed class DesktopInputStateTests
         Assert.IsTrue(snapshot.LeftButtonDown);
         Assert.IsFalse(snapshot.RightButtonDown);
     }
+
+    [TestMethod]
+    public void UpdateKey_IgnoresKeysOutsideVirtualKeyRange()
+    {
+        var state = new DesktopInputState();
+        state.UpdateKey(0, true);
+        state.UpdateKey(-1, true);
+        state.UpdateKey(256, true);
+        state.UpdateKey(0x41, true);
+        state.UpdateKey(0x41, false);
+
+        Assert.AreEqual(0, state.ReadSnapshot().ActiveVirtualKey);
+    }
+
+    [TestMethod]
+    public void UpdateKey_RepeatKeyDownDoesNotChangePressOrder()
+    {
+        var state = new DesktopInputState();
+        state.UpdateKey(0x41, true);
+        state.UpdateKey(0x44, true);
+        state.UpdateKey(0x41, true);
+        state.UpdateKey(0x44, false);
+
+        Assert.AreEqual(0x41, state.ReadSnapshot().ActiveVirtualKey);
+    }
 }

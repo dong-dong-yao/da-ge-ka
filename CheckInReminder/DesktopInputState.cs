@@ -27,6 +27,7 @@ public sealed class DesktopInputState
 
     private readonly int[] pressedKeys = new int[KeyCount];
     private readonly long[] pressOrders = new long[KeyCount];
+    private readonly object keyUpdateGate = new();
     private long nextPressOrder;
     private int cursorX;
     private int cursorY;
@@ -40,15 +41,21 @@ public sealed class DesktopInputState
             return;
         }
 
-        var value = pressed ? 1 : 0;
-        var previous = Interlocked.Exchange(ref pressedKeys[virtualKey], value);
-        if (pressed && previous == 0)
+        lock (keyUpdateGate)
         {
-            Volatile.Write(ref pressOrders[virtualKey], Interlocked.Increment(ref nextPressOrder));
-        }
+            var previous = Volatile.Read(ref pressedKeys[virtualKey]);
+            var value = pressed ? 1 : 0;
+            if (previous == value)
+            {
+                return;
+            }
 
-        if (previous != value)
-        {
+            if (pressed)
+            {
+                Volatile.Write(ref pressOrders[virtualKey], Interlocked.Increment(ref nextPressOrder));
+            }
+
+            Volatile.Write(ref pressedKeys[virtualKey], value);
             Interlocked.Increment(ref version);
         }
     }
@@ -88,19 +95,22 @@ public sealed class DesktopInputState
     public DesktopInputSnapshot ReadSnapshot()
     {
         var activeKey = 0;
-        var activeOrder = 0L;
-        for (var key = 1; key < KeyCount; key++)
+        lock (keyUpdateGate)
         {
-            if (Volatile.Read(ref pressedKeys[key]) == 0)
+            var activeOrder = 0L;
+            for (var key = 1; key < KeyCount; key++)
             {
-                continue;
-            }
+                if (Volatile.Read(ref pressedKeys[key]) == 0)
+                {
+                    continue;
+                }
 
-            var order = Volatile.Read(ref pressOrders[key]);
-            if (order > activeOrder)
-            {
-                activeOrder = order;
-                activeKey = key;
+                var order = Volatile.Read(ref pressOrders[key]);
+                if (order > activeOrder)
+                {
+                    activeOrder = order;
+                    activeKey = key;
+                }
             }
         }
 
