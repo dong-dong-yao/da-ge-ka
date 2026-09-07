@@ -169,6 +169,67 @@ public sealed class WhiteBearRigRendererTests
     }
 
     [TestMethod]
+    public void MouseMotion_LeavesOneConnectedOuterShoulderInsteadOfAnOldEdgeAndBlueWedge()
+    {
+        using var renderer = WhiteBearRigRenderer.Load();
+        foreach (var pose in new[]
+        {
+            DesktopPetRigPose.Rest with
+            {
+                MouseOffset = new PointF(1, -1), MouseRotationDegrees = 2.5f, MousePress = 1
+            },
+            DesktopPetRigPose.Rest with
+            {
+                MouseOffset = new PointF(-1, 1), MouseRotationDegrees = -2.5f, MousePress = 1
+            },
+            DesktopPetRigPose.Rest with
+            {
+                MouseOffset = new PointF(1, 1), MouseRotationDegrees = -2.5f, MousePress = 1
+            }
+        })
+        {
+            using var frame = renderer.Render(pose);
+            for (var y = 231; y <= 250; y++)
+            {
+                var visibleRuns = CountVisibleRuns(frame, y, 175, 226);
+                Assert.AreEqual(1, visibleRuns,
+                    $"Outer shoulder row {y} must contain exactly one visible run; actual {visibleRuns} means the shoulder is missing or an old edge and transparent wedge remain.");
+            }
+        }
+    }
+
+    [TestMethod]
+    public void MouseRotationAlone_ProducesAVisibleDifferenceLimitedToTheMouseRegion()
+    {
+        using var renderer = WhiteBearRigRenderer.Load();
+        using var idle = renderer.Render(DesktopPetRigPose.Rest);
+        using var rotated = renderer.Render(DesktopPetRigPose.Rest with { MouseRotationDegrees = 2.5f });
+
+        var bounds = DifferenceBounds(idle, rotated);
+        Assert.IsTrue(bounds.Width > 20 && bounds.Height > 20, $"Rotation difference was too small: {bounds}.");
+        Assert.IsTrue(bounds.Left >= 100 && bounds.Right < 280,
+            $"Rotation changed pixels outside the mouse region: {bounds}.");
+    }
+
+    [TestMethod]
+    public void OutOfRangePose_RendersExactlyLikeItsClampedBoundaryPose()
+    {
+        using var renderer = WhiteBearRigRenderer.Load();
+        using var boundary = renderer.Render(DesktopPetRigPose.Rest with
+        {
+            MouseOffset = new PointF(1, -1), MouseRotationDegrees = 2.5f, MousePress = 1,
+            KeyboardTarget = new PointF(0, 1), KeyboardPress = 1
+        });
+        using var outOfRange = renderer.Render(DesktopPetRigPose.Rest with
+        {
+            MouseOffset = new PointF(50, -50), MouseRotationDegrees = 90, MousePress = 50,
+            KeyboardTarget = new PointF(-50, 50), KeyboardPress = 50
+        });
+
+        Assert.AreEqual(Rectangle.Empty, DifferenceBounds(boundary, outOfRange));
+    }
+
+    [TestMethod]
     public void FramesAreDeterministicAndCallerOwned()
     {
         var renderer = WhiteBearRigRenderer.Load();
@@ -210,5 +271,19 @@ public sealed class WhiteBearRigRendererTests
         }
 
         return right < left ? Rectangle.Empty : Rectangle.FromLTRB(left, top, right + 1, bottom + 1);
+    }
+
+    private static int CountVisibleRuns(Bitmap frame, int y, int left, int right)
+    {
+        var runs = 0;
+        var visible = false;
+        for (var x = left; x < right; x++)
+        {
+            var nextVisible = frame.GetPixel(x, y).A >= 32;
+            if (nextVisible && !visible) runs++;
+            visible = nextVisible;
+        }
+
+        return runs;
     }
 }

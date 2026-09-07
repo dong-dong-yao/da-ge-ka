@@ -199,12 +199,12 @@ public sealed class WhiteBearRigRenderer : IDisposable
     private static GraphicsPath CreateMouseMask() => Polygon(
         // Source-calibrated outline: the full original paw AND its occluded mouse.
         // The initial brief's y <= .62 example truncated the paw at y ~= .70.
-        (0.351f, 0.512f), (0.430f, 0.512f), (0.430f, 0.613f), (0.395f, 0.620f),
+        (0.342f, 0.512f), (0.430f, 0.512f), (0.430f, 0.613f), (0.395f, 0.620f),
         (0.372f, 0.637f), (0.348f, 0.659f), (0.326f, 0.680f), (0.328f, 0.698f),
         (0.321f, 0.724f), (0.303f, 0.748f), (0.279f, 0.769f), (0.251f, 0.779f),
         (0.225f, 0.779f), (0.207f, 0.767f), (0.198f, 0.750f), (0.195f, 0.730f),
         (0.191f, 0.705f), (0.202f, 0.680f), (0.222f, 0.657f), (0.233f, 0.634f),
-        (0.246f, 0.609f), (0.267f, 0.585f), (0.305f, 0.550f));
+        (0.246f, 0.609f), (0.267f, 0.585f), (0.295f, 0.550f));
 
     private static GraphicsPath CreateKeyboardMask(Bitmap source)
     {
