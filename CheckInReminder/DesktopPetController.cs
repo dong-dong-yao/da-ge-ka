@@ -2,259 +2,275 @@ using System.Diagnostics;
 
 namespace CheckInReminder;
 
-/// <summary>宠物帧呈现目标（PetOverlayForm 实现；测试可用假实现）。</summary>
+/// <summary>A frame is borrowed until the next presentation or ClearFrame call.</summary>
 public interface IPetFrameSink
 {
     void SetFrame(Bitmap frame);
+    void ClearFrame();
 }
 
-/// <summary>
-/// 桌面宠物动画控制器：驱动待机/敲击状态与帧呈现。
-/// 宠物素材（{角色Id}-pet-idle / {角色Id}-pet-tap）存在时使用素材播放；
-/// 缺失时从角色提醒动画第 0 帧派生左右镜像占位帧，视觉上即"左右拍拍"。
-/// </summary>
+/// <summary>Samples live input on the UI thread and renders the white-bear rig until motion settles.</summary>
 public sealed class DesktopPetController : IDisposable
 {
-    private const int IdleFrameIntervalMs = 90;
-    private const int TapFrameIntervalMs = 36;
-    private const int PlaceholderWatchdogMs = 60;
-    private static readonly TimeSpan SilenceTimeout = TimeSpan.FromMilliseconds(400);
-
     private readonly IPetFrameSink sink;
-    private readonly PetTapStateMachine machine = new();
+    private readonly DesktopInputState inputState;
     private readonly System.Windows.Forms.Timer frameTimer;
+    private readonly Control dispatcher = new();
+    private readonly int ownerThreadId = Environment.CurrentManagedThreadId;
+    private readonly Stopwatch elapsedClock = new();
     private readonly Stopwatch playbackClock = new();
-    private readonly Stopwatch silenceClock = new();
+    private DesktopPetMotionModel motion = new();
+    private DesktopPetRigPose lastPose = DesktopPetRigPose.Rest;
+    private WhiteBearRigRenderer? rigRenderer;
     private AnimationSequence? idleSequence;
     private AnimationSequence? tapSequence;
     private AnimationTimeline? idleTimeline;
     private AnimationTimeline? tapTimeline;
-    private Bitmap? placeholderIdle;
-    private Bitmap? placeholderTapLeft;
-    private Bitmap? placeholderTapRight;
+    private Bitmap? ownedFrame;
+    private long lastVersion = long.MinValue;
     private int currentFrame = -1;
-    private bool disposed;
+    private int pendingNotification;
+    private bool playingTap;
+    private bool started;
+    private bool inFrameTick;
+    private bool wakeDuringFrame;
+    private volatile bool disposed;
 
-    public DesktopPetController(IPetFrameSink sink)
+    public DesktopPetController(IPetFrameSink sink, DesktopInputState inputState)
     {
-        this.sink = sink;
-        frameTimer = new System.Windows.Forms.Timer { Interval = IdleFrameIntervalMs };
-        frameTimer.Tick += (_, _) => OnFrameTick();
+        this.sink = sink ?? throw new ArgumentNullException(nameof(sink));
+        this.inputState = inputState ?? throw new ArgumentNullException(nameof(inputState));
+        _ = dispatcher.Handle;
+        frameTimer = new System.Windows.Forms.Timer { Interval = 16 };
+        frameTimer.Tick += OnFrameTick;
     }
 
-    internal PetTapStateMachine.Pose CurrentPose => machine.Current;
+    internal bool IsRendering => !disposed && frameTimer.Enabled;
 
-    /// <summary>切换到指定角色的宠物素材（或派生占位帧）。</summary>
+    /// <summary>Present idle immediately; Start is called only after hook installation.</summary>
     public void SetCharacter(ReminderCharacter character)
     {
+        EnsureOwnerThread();
+        ObjectDisposedException.ThrowIf(disposed, this);
+        ArgumentNullException.ThrowIfNull(character);
         DisposeAssets();
-        machine.OnSilence();
-        silenceClock.Reset();
+        motion = new DesktopPetMotionModel();
+        lastPose = DesktopPetRigPose.Rest;
+        lastVersion = long.MinValue;
+        currentFrame = -1;
+        playingTap = false;
 
         if (string.Equals(character.Id, AnimationCatalog.DefaultCharacterId, StringComparison.Ordinal))
         {
-            using var renderer = WhiteBearRigRenderer.Load();
-            placeholderIdle = renderer.Render(DesktopPetRigPose.Rest);
-            placeholderTapLeft = renderer.Render(DesktopPetRigPose.Rest with
-            {
-                MouseOffset = new PointF(-1, 1), MouseRotationDegrees = -2.5f,
-                MousePress = 1f, KeyboardPress = 1f
-            });
-            placeholderTapRight = renderer.Render(DesktopPetRigPose.Rest with
-            {
-                KeyboardTarget = new PointF(0.8f, 0.7f), KeyboardPress = 1f
-            });
-            currentFrame = -1;
-            sink.SetFrame(placeholderIdle);
-            frameTimer.Stop();
-            playbackClock.Reset();
-            return;
+            rigRenderer = WhiteBearRigRenderer.Load();
+            PresentOwnedFrame(rigRenderer.Render(DesktopPetRigPose.Rest));
         }
-
-        if (character.HasPetAssets)
+        else if (character.HasPetAssets)
         {
             idleSequence = AnimationSequence.Load(character.PetIdleSequenceName, character.PetIdleDuration, loop: true);
             tapSequence = AnimationSequence.Load(character.PetTapSequenceName, character.PetTapDuration, loop: true);
             idleTimeline = new AnimationTimeline(idleSequence.Frames.Count, character.PetIdleDuration, loop: true);
             tapTimeline = new AnimationTimeline(tapSequence.Frames.Count, character.PetTapDuration, loop: true);
-            currentFrame = 0;
             sink.SetFrame(idleSequence.Frames[0]);
+            currentFrame = 0;
             playbackClock.Restart();
-            frameTimer.Interval = IdleFrameIntervalMs;
-            frameTimer.Start();
-            return;
         }
-
-        // 占位模式：待机是静帧（零 CPU），敲击时直接呈现左右派生帧
-        using var reminder = AnimationSequence.Load(character.SequenceName, character.Duration, character.Loop);
-        placeholderIdle = new Bitmap(SelectMostVisibleFrame(reminder.Frames));
-        placeholderTapLeft = FlipHorizontal(placeholderIdle);
-        placeholderTapRight = OffsetVertical(placeholderIdle, 6);
-        currentFrame = -1;
-        sink.SetFrame(placeholderIdle);
-        frameTimer.Stop();
-        playbackClock.Reset();
+        else
+        {
+            using var reminder = AnimationSequence.Load(character.SequenceName, character.Duration, character.Loop);
+            PresentOwnedFrame(new Bitmap(reminder.Frames.MaxBy(VisibleSampleCount)!));
+        }
+        if (started) WakeTimer();
     }
 
-    private static Bitmap SelectMostVisibleFrame(IReadOnlyList<Bitmap> frames)
+    public void Start()
     {
-        var bestFrame = frames[0];
-        var bestScore = -1;
-        foreach (var frame in frames)
-        {
-            var score = VisibleSampleCount(frame);
-            if (score > bestScore)
-            {
-                bestScore = score;
-                bestFrame = frame;
-            }
-        }
+        EnsureOwnerThread();
+        if (disposed || started) return;
+        started = true;
+        WakeTimer();
+    }
 
-        return bestFrame;
+    /// <summary>Hook callbacks only wake the timer; sampling and drawing happen on a later UI tick.</summary>
+    public void NotifyInputAvailable()
+    {
+        if (disposed) return;
+        if (Environment.CurrentManagedThreadId == ownerThreadId)
+        {
+            WakeTimer();
+            return;
+        }
+        // Coalesce non-hook callers, including a notification queued just before teardown.
+        if (Interlocked.Exchange(ref pendingNotification, 1) != 0) return;
+        try
+        {
+            dispatcher.BeginInvoke(new Action(() =>
+            {
+                Interlocked.Exchange(ref pendingNotification, 0);
+                if (!disposed) WakeTimer();
+            }));
+        }
+        catch (InvalidOperationException)
+        {
+            Interlocked.Exchange(ref pendingNotification, 0);
+        }
+    }
+
+    private void WakeTimer()
+    {
+        if (disposed || !started) return;
+        if (inFrameTick)
+        {
+            wakeDuringFrame = true;
+            return;
+        }
+        if (frameTimer.Enabled) return;
+        elapsedClock.Restart();
+        frameTimer.Start();
+    }
+
+    private void OnFrameTick(object? sender, EventArgs eventArgs)
+    {
+        if (disposed || !started || inFrameTick) return;
+        inFrameTick = true;
+        wakeDuringFrame = false;
+        // A slow frame must not leave WM_TIMER continuously ready and starve UI messages.
+        frameTimer.Stop();
+        try
+        {
+            var elapsed = elapsedClock.Elapsed;
+            elapsedClock.Restart();
+            var snapshot = inputState.ReadSnapshot();
+            var area = sink is Control control
+                ? Screen.FromControl(control).WorkingArea
+                : Screen.PrimaryScreen?.WorkingArea ?? Rectangle.Empty;
+            var pose = motion.Step(snapshot, area, elapsed);
+            if (rigRenderer is not null)
+            {
+                if (snapshot.Version != lastVersion || !lastPose.IsAtRest || !pose.IsAtRest)
+                    PresentOwnedFrame(rigRenderer.Render(ToRenderPose(pose)));
+            }
+            else if (idleSequence is not null && tapSequence is not null)
+            {
+                PlaySequence(snapshot.ActiveVirtualKey != 0 || snapshot.LeftButtonDown || snapshot.RightButtonDown);
+            }
+            lastVersion = snapshot.Version;
+            lastPose = pose;
+            if (disposed) return;
+            if (pose.IsAtRest && idleSequence is null && !wakeDuringFrame)
+            {
+                elapsedClock.Reset();
+            }
+            else frameTimer.Start();
+        }
+        finally
+        {
+            inFrameTick = false;
+        }
+    }
+
+    private static DesktopPetRigPose ToRenderPose(DesktopPetRigPose pose)
+    {
+        // The model's neutral target differs from the source artwork's resting paw.
+        // Blend by press so key release returns to the original idle artwork.
+        var rest = DesktopPetRigPose.Rest;
+        var press = pose.IsAtRest ? 0f : pose.KeyboardPress;
+        var target = new PointF(
+            rest.KeyboardTarget.X + (pose.KeyboardTarget.X - rest.KeyboardTarget.X) * press,
+            rest.KeyboardTarget.Y + (pose.KeyboardTarget.Y - rest.KeyboardTarget.Y) * press);
+        var offset = pose.MouseOffset;
+        if (pose.IsAtRest && Math.Abs(offset.X) < 0.002f && Math.Abs(offset.Y) < 0.002f)
+            offset = PointF.Empty;
+        return pose with
+        {
+            MouseOffset = offset,
+            MouseRotationDegrees = pose.IsAtRest ? 0f : pose.MouseRotationDegrees,
+            MousePress = pose.IsAtRest ? 0f : pose.MousePress,
+            KeyboardTarget = target,
+            KeyboardPress = press
+        };
+    }
+
+    private void PlaySequence(bool tap)
+    {
+        if (playingTap != tap)
+        {
+            playingTap = tap;
+            playbackClock.Restart();
+            currentFrame = -1;
+        }
+        var sequence = tap ? tapSequence! : idleSequence!;
+        var timeline = tap ? tapTimeline! : idleTimeline!;
+        var frame = timeline.GetFrameIndex(playbackClock.Elapsed);
+        if (currentFrame == frame) return;
+        sink.SetFrame(sequence.Frames[frame]);
+        currentFrame = frame;
+    }
+
+    private void PresentOwnedFrame(Bitmap next)
+    {
+        try
+        {
+            sink.SetFrame(next);
+        }
+        catch
+        {
+            next.Dispose();
+            throw;
+        }
+        if (disposed)
+        {
+            sink.ClearFrame();
+            next.Dispose();
+            return;
+        }
+        var previous = ownedFrame;
+        ownedFrame = next;
+        previous?.Dispose();
     }
 
     private static int VisibleSampleCount(Bitmap frame)
     {
-        const int sampleStep = 4;
         var score = 0;
-        for (var y = 0; y < frame.Height; y += sampleStep)
-        {
-            for (var x = 0; x < frame.Width; x += sampleStep)
-            {
-                if (frame.GetPixel(x, y).A >= 32)
-                {
-                    score++;
-                }
-            }
-        }
-
+        for (var y = 0; y < frame.Height; y += 4)
+        for (var x = 0; x < frame.Width; x += 4)
+            if (frame.GetPixel(x, y).A >= 32) score++;
         return score;
-    }
-
-    /// <summary>一次按键（已由钩子侧节流合并）。</summary>
-    public void OnKeyTapped()
-    {
-        if (disposed)
-        {
-            return;
-        }
-
-        silenceClock.Restart();
-        var pose = machine.OnTap();
-        if (tapSequence is not null)
-        {
-            if (!frameTimer.Enabled || frameTimer.Interval != TapFrameIntervalMs)
-            {
-                playbackClock.Restart();
-                currentFrame = -1;
-                frameTimer.Interval = TapFrameIntervalMs;
-                frameTimer.Start();
-            }
-
-            return;
-        }
-
-        sink.SetFrame(pose == PetTapStateMachine.Pose.Left ? placeholderTapLeft! : placeholderTapRight!);
-        if (!frameTimer.Enabled)
-        {
-            frameTimer.Interval = PlaceholderWatchdogMs;
-            frameTimer.Start();
-        }
-    }
-
-    private void OnFrameTick()
-    {
-        if (disposed)
-        {
-            return;
-        }
-
-        if (machine.Current == PetTapStateMachine.Pose.Idle)
-        {
-            if (idleSequence is not null && idleTimeline is not null)
-            {
-                var frame = idleTimeline.GetFrameIndex(playbackClock.Elapsed);
-                if (frame != currentFrame)
-                {
-                    currentFrame = frame;
-                    sink.SetFrame(idleSequence.Frames[frame]);
-                }
-            }
-
-            return;
-        }
-
-        if (silenceClock.Elapsed >= SilenceTimeout)
-        {
-            machine.OnSilence();
-            if (idleSequence is not null)
-            {
-                playbackClock.Restart();
-                currentFrame = -1;
-                frameTimer.Interval = IdleFrameIntervalMs;
-            }
-            else
-            {
-                frameTimer.Stop();
-                sink.SetFrame(placeholderIdle!);
-            }
-
-            return;
-        }
-
-        if (tapSequence is not null && tapTimeline is not null)
-        {
-            var frame = tapTimeline.GetFrameIndex(playbackClock.Elapsed);
-            if (frame != currentFrame)
-            {
-                currentFrame = frame;
-                sink.SetFrame(tapSequence.Frames[frame]);
-            }
-        }
-    }
-
-    private static Bitmap FlipHorizontal(Bitmap source)
-    {
-        var copy = new Bitmap(source);
-        copy.RotateFlip(RotateFlipType.RotateNoneFlipX);
-        return copy;
-    }
-
-    private static Bitmap OffsetVertical(Bitmap source, int offsetY)
-    {
-        var result = new Bitmap(source.Width, source.Height, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
-        using var graphics = Graphics.FromImage(result);
-        graphics.Clear(Color.Transparent);
-        graphics.DrawImage(source, 0, offsetY, source.Width, source.Height);
-        return result;
     }
 
     private void DisposeAssets()
     {
         frameTimer.Stop();
+        elapsedClock.Reset();
+        playbackClock.Reset();
+        sink.ClearFrame();
+        ownedFrame?.Dispose();
+        ownedFrame = null;
+        rigRenderer?.Dispose();
+        rigRenderer = null;
         idleSequence?.Dispose();
         tapSequence?.Dispose();
         idleSequence = null;
         tapSequence = null;
         idleTimeline = null;
         tapTimeline = null;
-        placeholderIdle?.Dispose();
-        placeholderTapLeft?.Dispose();
-        placeholderTapRight?.Dispose();
-        placeholderIdle = null;
-        placeholderTapLeft = null;
-        placeholderTapRight = null;
+    }
+
+    private void EnsureOwnerThread()
+    {
+        if (Environment.CurrentManagedThreadId != ownerThreadId)
+            throw new InvalidOperationException("桌宠生命周期操作必须在创建控制器的 UI 线程执行。");
     }
 
     public void Dispose()
     {
-        if (disposed)
-        {
-            return;
-        }
-
+        if (disposed) return;
+        EnsureOwnerThread();
         disposed = true;
+        started = false;
+        frameTimer.Tick -= OnFrameTick;
         DisposeAssets();
         frameTimer.Dispose();
+        dispatcher.Dispose();
     }
 }

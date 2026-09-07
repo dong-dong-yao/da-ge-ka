@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Linq.Expressions;
 using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using CheckInReminder;
@@ -6,6 +7,7 @@ using CheckInReminder;
 namespace CheckInReminder.Tests;
 
 [TestClass]
+[DoNotParallelize]
 public sealed class WindowBehaviorTests
 {
     [TestMethod]
@@ -551,6 +553,203 @@ public sealed class WindowBehaviorTests
                 $"卡片标题重复绘制分配了 {allocated} 字节；绘制路径不应逐帧创建控件和位图。");
         });
     }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void DesktopPetLifecycle_ShowsBeforeInstallingAndUnsubscribesBeforeDisablingOrExiting(bool exit)
+    {
+        RunOnStaThread(() =>
+        {
+            var fixture = new PetInputFixture();
+            using var context = fixture.CreateContext();
+            DesktopPetController? controller = null;
+            Form? form = null;
+            fixture.OnInstall = () =>
+            {
+                controller = (DesktopPetController)GetField(context, "desktopPetController")!;
+                form = (Form)GetField(context, "desktopPetForm")!;
+                Assert.IsTrue(form.Visible, "安装 Hook 前必须已展示桌宠。");
+                Assert.IsFalse(ControllerIsRendering(controller), "安装完成前不能开始输入循环。");
+                Assert.IsNotNull(GetField(fixture.Service!, "InputAvailable"), "安装前必须订阅唤醒事件。");
+            };
+            fixture.OnUninstall = () =>
+            {
+                Assert.IsNull(GetField(fixture.Service!, "InputAvailable"), "卸载 Hook 前必须取消订阅。");
+                Assert.IsFalse(form!.IsDisposed, "先停止输入监听，再释放窗体。");
+                Assert.IsNotNull(GetField(form, "currentSource"), "卸载输入时当前帧应仍存活。");
+            };
+            try
+            {
+                InvokeInstanceMethod(context, "ApplyDesktopPet", true);
+                Assert.IsNotNull(controller);
+                Assert.IsTrue(ControllerIsRendering(controller));
+                PumpEvents(700);
+                Assert.IsFalse(ControllerIsRendering(controller));
+                var initial = (Bitmap)GetField(form!, "currentSource")!;
+                fixture.Key(0x41, true);
+                Assert.IsTrue(ControllerIsRendering(controller), "真实 Hook 回调应唤醒控制器。");
+                Assert.AreSame(initial, GetField(form!, "currentSource"), "Hook 回调不能同步 Render。");
+                PumpEvents(100);
+                Assert.AreNotSame(initial, GetField(form!, "currentSource"), "事件泵必须驱动新帧呈现。");
+
+                InvokeInstanceMethod(context, exit ? "ExitApplication" : "ApplyDesktopPet", exit ? [] : [false]);
+                CollectionAssert.AreEquivalent(new[] { (IntPtr)101, (IntPtr)202 }, fixture.Uninstalled);
+                Assert.IsTrue(form!.IsDisposed);
+                Assert.IsFalse(ControllerIsRendering(controller));
+                Assert.IsNull(GetField(form, "currentSource"));
+                Assert.IsNull(GetField(context, "desktopPetController"));
+            }
+            finally
+            {
+                InvokeInstanceMethod(context, "ExitApplication");
+            }
+        });
+    }
+
+    [TestMethod]
+    public void DesktopPetLifecycle_HookFailureKeepsIdleAndReportsOnceWithoutBlocking()
+    {
+        RunOnStaThread(() =>
+        {
+            var fixture = new PetInputFixture { FailMouseHook = true };
+            using var context = fixture.CreateContext();
+            try
+            {
+                InvokeInstanceMethod(context, "ApplyDesktopPet", true);
+                var form = (Form)GetField(context, "desktopPetForm")!;
+                var controller = (DesktopPetController)GetField(context, "desktopPetController")!;
+                var idle = (Bitmap)GetField(form, "currentSource")!;
+                Assert.IsTrue(form.Visible);
+                Assert.IsFalse(ControllerIsRendering(controller));
+                Assert.IsNull(GetField(context, "globalInput"));
+                Assert.IsNull(GetField(fixture.Service!, "InputAvailable"));
+                var menu = (ContextMenuStrip)GetField(context, "trayMenu")!;
+                var status = menu.Items.Cast<ToolStripItem>().Single(item => item.Text == "输入监听不可用（错误 87）");
+                Assert.IsFalse(status.Enabled);
+                Assert.IsTrue(status.Available);
+                Assert.HasCount(1, fixture.Notifications);
+                StringAssert.Contains(fixture.Notifications[0], "87");
+                PumpEvents(150);
+                Assert.AreSame(idle, GetField(form, "currentSource"));
+                _ = idle.GetPixel(0, 0);
+
+                InvokeInstanceMethod(context, "ApplyDesktopPet", false);
+                InvokeInstanceMethod(context, "ApplyDesktopPet", true);
+                Assert.HasCount(1, fixture.Notifications, "本次程序生命周期内只显示一次非阻塞通知。");
+                InvokeInstanceMethod(context, "ApplyDesktopPet", false);
+                fixture.FailMouseHook = false;
+                InvokeInstanceMethod(context, "ApplyDesktopPet", true);
+                Assert.IsFalse(status.Available, "重新启用并安装成功后隐藏过期失败状态。");
+                Assert.IsNotNull(GetField(context, "globalInput"));
+            }
+            finally
+            {
+                InvokeInstanceMethod(context, "ExitApplication");
+            }
+        });
+    }
+
+    [TestMethod]
+    public void PetOverlay_DisposalAndClearFrameReleaseBorrowedSourceReference()
+    {
+        RunOnStaThread(() =>
+        {
+            using var form = CreateInternalForm("CheckInReminder.PetOverlayForm", 140);
+            using var source = new Bitmap(30, 20);
+            ((IPetFrameSink)form).SetFrame(source);
+            InvokeInstanceMethod(form, "ClearFrame");
+            Assert.IsNull(GetField(form, "currentSource"));
+            ((IPetFrameSink)form).SetFrame(source);
+            form.Dispose();
+            Assert.IsNull(GetField(form, "currentSource"));
+            _ = source.GetPixel(0, 0);
+        });
+    }
+
+    [TestMethod]
+    public void PetOverlay_RejectedFrameKeepsThePreviousLiveSourceForDpiRepaint()
+    {
+        RunOnStaThread(() =>
+        {
+            using var form = CreateInternalForm("CheckInReminder.PetOverlayForm", 140);
+            using var previous = new Bitmap(30, 20);
+            ((IPetFrameSink)form).SetFrame(previous);
+            var invalid = new Bitmap(30, 20);
+            invalid.Dispose();
+            Assert.Throws<ArgumentException>(() => ((IPetFrameSink)form).SetFrame(invalid));
+            Assert.AreSame(previous, GetField(form, "currentSource"),
+                "失败的呈现不能把已释放位图留给 DPI 重绘。");
+        });
+    }
+
+    private sealed class PetInputFixture
+    {
+        private readonly Dictionary<int, Delegate> callbacks = new();
+        public object? Service { get; private set; }
+        public bool FailMouseHook { get; set; }
+        public Action? OnInstall { get; set; }
+        public Action? OnUninstall { get; set; }
+        public List<IntPtr> Uninstalled { get; } = [];
+        public List<string> Notifications { get; } = [];
+
+        public ApplicationContext CreateContext()
+        {
+            var serviceType = typeof(AppSettings).Assembly.GetType("CheckInReminder.GlobalInputService", true)!;
+            var state = Expression.Parameter(typeof(DesktopInputState), "state");
+            var factory = Expression.Lambda(typeof(Func<,>).MakeGenericType(typeof(DesktopInputState), serviceType),
+                Expression.Convert(Expression.Call(Expression.Constant(this), nameof(CreateService), null, state), serviceType), state).Compile();
+            var type = typeof(AppSettings).Assembly.GetType("CheckInReminder.ReminderApplicationContext", true)!;
+            var settings = AppSettings.CreateDefault();
+            settings.DesktopPetEnabled = false;
+            var context = (ApplicationContext)Activator.CreateInstance(type,
+                BindingFlags.Instance | BindingFlags.NonPublic, null,
+                [settings, factory, new Action<string>(Notifications.Add)], null)!;
+            // Suppress reminder scheduling while pumping the desktop-pet lifecycle.
+            type.GetField("morningCompleted", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(context, true);
+            type.GetField("eveningCompleted", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(context, true);
+            return context;
+        }
+
+        public object CreateService(DesktopInputState state)
+        {
+            var area = Screen.PrimaryScreen!.WorkingArea;
+            state.UpdatePointer(area.Left + area.Width / 2, area.Top + area.Height / 2);
+            var type = typeof(AppSettings).Assembly.GetType("CheckInReminder.GlobalInputService", true)!;
+            Service = Activator.CreateInstance(type, BindingFlags.Instance | BindingFlags.NonPublic, null,
+                [state, new Func<int, Delegate, IntPtr>((hook, callback) =>
+                {
+                    OnInstall?.Invoke();
+                    callbacks[hook] = callback;
+                    if (hook == 14 && FailMouseHook)
+                    {
+                        Marshal.SetLastPInvokeError(87);
+                        return IntPtr.Zero;
+                    }
+                    return hook == 13 ? (IntPtr)101 : (IntPtr)202;
+                }), new Func<IntPtr, bool>(handle =>
+                {
+                    OnUninstall?.Invoke();
+                    Uninstalled.Add(handle);
+                    return true;
+                })], null)!;
+            return Service;
+        }
+
+        public void Key(int virtualKey, bool pressed)
+        {
+            using var data = new NativeBuffer(sizeof(int));
+            Marshal.WriteInt32(data.Pointer, virtualKey);
+            callbacks[13].DynamicInvoke(0, (IntPtr)(pressed ? 0x0100 : 0x0101), data.Pointer);
+        }
+    }
+
+    private static object? GetField(object target, string name) =>
+        target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(target);
+
+    private static bool ControllerIsRendering(DesktopPetController controller) =>
+        (bool)typeof(DesktopPetController).GetProperty("IsRendering", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(controller)!;
 
     private static Form CreateSettingsForm() => CreateInternalForm(
         "CheckInReminder.SettingsForm",

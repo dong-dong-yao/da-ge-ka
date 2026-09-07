@@ -12,7 +12,8 @@ internal sealed class ReminderApplicationContext : ApplicationContext
     private readonly ReminderScheduler scheduler;
     private readonly ShutdownGuardForm shutdownGuard;
     private readonly ReminderQueue reminderQueue = new();
-    private readonly DesktopInputState desktopInputState = new();
+    private readonly Func<DesktopInputState, GlobalInputService> inputServiceFactory;
+    private readonly Action<string> showInputFailure;
     private AppSettings settings;
     private SettingsForm? settingsForm;
     private AnimatedReminderSession? reminder;
@@ -22,6 +23,8 @@ internal sealed class ReminderApplicationContext : ApplicationContext
     private GlobalInputService? globalInput;
     private ToolStripMenuItem? desktopPetItem;
     private ToolStripMenuItem? adjustPetPositionItem;
+    private readonly ToolStripMenuItem inputStatusItem;
+    private bool inputFailureNotified;
     private bool morningCompleted;
     private bool eveningCompleted;
     private bool isExiting;
@@ -29,9 +32,19 @@ internal sealed class ReminderApplicationContext : ApplicationContext
     private bool schedulerStarted;
 
     public ReminderApplicationContext()
+        : this(new SettingsService().Load(), state => new GlobalInputService(state), null)
     {
-        settings = settingsService.Load();
         autoStartService.Apply(settings.AutoStart, out _);
+    }
+
+    internal ReminderApplicationContext(
+        AppSettings initialSettings,
+        Func<DesktopInputState, GlobalInputService> inputServiceFactory,
+        Action<string>? showInputFailure)
+    {
+        settings = initialSettings.Clone();
+        this.inputServiceFactory = inputServiceFactory;
+        this.showInputFailure = showInputFailure ?? ShowInputFailureBalloon;
 
         applicationIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath) ??
             (Icon)SystemIcons.Application.Clone();
@@ -74,6 +87,13 @@ internal sealed class ReminderApplicationContext : ApplicationContext
         trayMenu.Items.Add(settingsItem);
         trayMenu.Items.Add(desktopPetItem);
         trayMenu.Items.Add(adjustPetPositionItem);
+        inputStatusItem = new ToolStripMenuItem
+        {
+            Enabled = false,
+            Visible = false,
+            Padding = new Padding(16, 7, 24, 7),
+        };
+        trayMenu.Items.Add(inputStatusItem);
         trayMenu.Items.Add(exitItem);
 
         notifyIcon = new NotifyIcon
@@ -203,30 +223,63 @@ internal sealed class ReminderApplicationContext : ApplicationContext
 
         if (enabled && desktopPetForm is null)
         {
+            inputStatusItem.Visible = false;
+            var desktopInputState = new DesktopInputState();
+            var pointer = Cursor.Position;
+            desktopInputState.UpdatePointer(pointer.X, pointer.Y);
             desktopPetForm = new PetOverlayForm();
-            desktopPetController = new DesktopPetController(desktopPetForm);
+            desktopPetController = new DesktopPetController(desktopPetForm, desktopInputState);
             LoadDesktopPetCharacter();
+            globalInput = inputServiceFactory(desktopInputState);
+            globalInput.InputAvailable += OnDesktopInputAvailable;
             desktopPetForm.Show();
             desktopPetForm.SetClickThrough(adjustPetPositionItem?.Checked != true);
-            globalInput = new GlobalInputService(desktopInputState);
             var installResult = globalInput.Install();
-            if (!installResult.Success)
+            if (installResult.Success)
             {
-                // 被杀软等拦截时静默降级：宠物保留待机显示，仅不响应全局输入
+                desktopPetController.Start();
+            }
+            else
+            {
+                globalInput.InputAvailable -= OnDesktopInputAvailable;
                 globalInput.Dispose();
                 globalInput = null;
+                inputStatusItem.Text = $"输入监听不可用（错误 {installResult.Win32Error}）";
+                inputStatusItem.Visible = true;
+                if (!inputFailureNotified)
+                {
+                    inputFailureNotified = true;
+                    showInputFailure(inputStatusItem.Text);
+                }
             }
         }
-        else if (!enabled && desktopPetForm is not null)
+        else if (!enabled)
         {
-            globalInput?.Dispose();
-            globalInput = null;
-            desktopPetController?.Dispose();
-            desktopPetController = null;
-            desktopPetForm.Close();
-            desktopPetForm.Dispose();
-            desktopPetForm = null;
+            DisposeDesktopPet();
         }
+    }
+
+    private void OnDesktopInputAvailable(object? sender, EventArgs eventArgs) =>
+        desktopPetController?.NotifyInputAvailable();
+
+    private void ShowInputFailureBalloon(string message) =>
+        notifyIcon.ShowBalloonTip(5000, UiTheme.ProductName,
+            $"{message}。桌宠将保留待机显示，可关闭后重新启用以重试。", ToolTipIcon.Warning);
+
+    private void DisposeDesktopPet()
+    {
+        if (globalInput is not null)
+        {
+            globalInput.InputAvailable -= OnDesktopInputAvailable;
+            globalInput.Dispose();
+            globalInput = null;
+        }
+        desktopPetController?.Dispose();
+        desktopPetController = null;
+        desktopPetForm?.Close();
+        desktopPetForm?.Dispose();
+        desktopPetForm = null;
+        inputStatusItem.Visible = false;
     }
 
     private void LoadDesktopPetCharacter()
@@ -398,13 +451,7 @@ internal sealed class ReminderApplicationContext : ApplicationContext
             confirm = null;
             settingsForm?.Close();
             settingsForm = null;
-            globalInput?.Dispose();
-            globalInput = null;
-            desktopPetController?.Dispose();
-            desktopPetController = null;
-            desktopPetForm?.Close();
-            desktopPetForm?.Dispose();
-            desktopPetForm = null;
+            DisposeDesktopPet();
             shutdownGuard.CloseForExit();
             shutdownGuard.Dispose();
             notifyIcon.Visible = false;

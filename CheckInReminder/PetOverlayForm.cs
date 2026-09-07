@@ -74,25 +74,44 @@ internal sealed class PetOverlayForm : Form, IPetFrameSink
     /// <summary>呈现一帧（按目标高度等比缩放，带 DPI 换算）。位图所有权归调用方。</summary>
     public void SetFrame(Bitmap source)
     {
-        currentSource = source;
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
         using var rendered = RenderScaled(source);
-        if (Size != rendered.Size)
+        var previous = currentSource;
+        currentSource = source;
+        try
         {
-            Size = rendered.Size;
-        }
+            if (Size != rendered.Size)
+            {
+                Size = rendered.Size;
+            }
 
-        if (!positioned)
+            if (!positioned)
+            {
+                positioned = true;
+                PositionBottomRight();
+            }
+
+            if (!IsHandleCreated)
+            {
+                _ = Handle;
+            }
+
+            LayeredWindowPresenter.Present(Handle, Location, rendered);
+        }
+        catch
         {
-            positioned = true;
-            PositionBottomRight();
+            currentSource = IsDisposed ? null : previous;
+            throw;
         }
+    }
 
-        if (!IsHandleCreated)
-        {
-            _ = Handle;
-        }
+    /// <summary>Drop the borrowed frame before its owner releases it.</summary>
+    public void ClearFrame() => currentSource = null;
 
-        LayeredWindowPresenter.Present(Handle, Location, rendered);
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) ClearFrame();
+        base.Dispose(disposing);
     }
 
     protected override void WndProc(ref Message message)
