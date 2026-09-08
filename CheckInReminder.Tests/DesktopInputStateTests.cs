@@ -69,6 +69,23 @@ public sealed class DesktopInputStateTests
     }
 
     [TestMethod]
+    public void KeyRelease_ImmediatelyErasesPressedIdentityAndItsOrderSlot()
+    {
+        var state = new DesktopInputState();
+        state.UpdateKey(0x41, true);
+        state.UpdateKey(0x44, true);
+
+        state.UpdateKey(0x44, false);
+
+        var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        var pressed = (int[])typeof(DesktopInputState).GetField("pressedKeys", flags)!.GetValue(state)!;
+        var orders = (long[])typeof(DesktopInputState).GetField("pressOrders", flags)!.GetValue(state)!;
+        Assert.AreEqual(0, pressed[0x44], "松键后不能留下该键的按下标记。");
+        Assert.AreEqual(0L, orders[0x44], "松键后不能从次序槽恢复已释放的键身份。");
+        Assert.AreEqual(0x41, state.ReadSnapshot().ActiveVirtualKey, "仍按住的键必须继续生效。");
+    }
+
+    [TestMethod]
     public void KeyUpdate_WaitsForGateAndCompletesAfterRelease()
     {
         var state = new DesktopInputState();

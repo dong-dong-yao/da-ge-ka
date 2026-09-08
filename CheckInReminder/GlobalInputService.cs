@@ -6,7 +6,7 @@ internal readonly record struct GlobalInputInstallResult(bool Success, int Win32
 
 /// <summary>
 /// Captures transient keyboard and mouse state without translating keys to text.
-/// Low-level hooks execute on their installing thread; subscribers must only wake a timer.
+/// Low-level hooks execute on their installing thread; subscribers may map bounded visual pulses, never render.
 /// </summary>
 internal sealed class GlobalInputService : IDisposable
 {

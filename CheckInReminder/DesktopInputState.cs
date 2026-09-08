@@ -54,6 +54,10 @@ public sealed class DesktopInputState
             {
                 Volatile.Write(ref pressOrders[virtualKey], Interlocked.Increment(ref nextPressOrder));
             }
+            else
+            {
+                Volatile.Write(ref pressOrders[virtualKey], 0);
+            }
 
             Volatile.Write(ref pressedKeys[virtualKey], value);
             Interlocked.Increment(ref version);

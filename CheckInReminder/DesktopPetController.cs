@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 namespace CheckInReminder;
 
@@ -14,11 +15,17 @@ public sealed class DesktopPetController : IDisposable
 {
     private readonly IPetFrameSink sink;
     private readonly DesktopInputState inputState;
+    private readonly Func<Bitmap> loadArtwork;
+    private readonly Func<Bitmap, WhiteBearRigRenderer> createRig;
     private readonly System.Windows.Forms.Timer frameTimer;
     private readonly Control dispatcher = new();
     private readonly int ownerThreadId = Environment.CurrentManagedThreadId;
     private readonly Stopwatch elapsedClock = new();
     private readonly Stopwatch playbackClock = new();
+    private readonly object pulseGate = new();
+    private PointF? pendingKeyboardPulse;
+    private bool pendingLeftPulse;
+    private bool pendingRightPulse;
     private DesktopPetMotionModel motion = new();
     private DesktopPetRigPose lastPose = DesktopPetRigPose.Rest;
     private WhiteBearRigRenderer? rigRenderer;
@@ -34,12 +41,22 @@ public sealed class DesktopPetController : IDisposable
     private bool started;
     private bool inFrameTick;
     private bool wakeDuringFrame;
+    private volatile bool staticFallback;
     private volatile bool disposed;
 
     public DesktopPetController(IPetFrameSink sink, DesktopInputState inputState)
+        : this(sink, inputState, WhiteBearRigRenderer.LoadArtwork, WhiteBearRigRenderer.Create)
+    {
+    }
+
+    internal DesktopPetController(
+        IPetFrameSink sink, DesktopInputState inputState,
+        Func<Bitmap> loadArtwork, Func<Bitmap, WhiteBearRigRenderer> createRig)
     {
         this.sink = sink ?? throw new ArgumentNullException(nameof(sink));
         this.inputState = inputState ?? throw new ArgumentNullException(nameof(inputState));
+        this.loadArtwork = loadArtwork ?? throw new ArgumentNullException(nameof(loadArtwork));
+        this.createRig = createRig ?? throw new ArgumentNullException(nameof(createRig));
         _ = dispatcher.Handle;
         frameTimer = new System.Windows.Forms.Timer { Interval = 16 };
         frameTimer.Tick += OnFrameTick;
@@ -59,11 +76,12 @@ public sealed class DesktopPetController : IDisposable
         lastVersion = long.MinValue;
         currentFrame = -1;
         playingTap = false;
+        staticFallback = false;
+        _ = TakePulses();
 
         if (string.Equals(character.Id, AnimationCatalog.DefaultCharacterId, StringComparison.Ordinal))
         {
-            rigRenderer = WhiteBearRigRenderer.Load();
-            PresentOwnedFrame(rigRenderer.Render(DesktopPetRigPose.Rest));
+            LoadWhiteBear();
         }
         else if (character.HasPetAssets)
         {
@@ -83,6 +101,32 @@ public sealed class DesktopPetController : IDisposable
         if (started) WakeTimer();
     }
 
+    private void LoadWhiteBear()
+    {
+        // Source errors remain visible to the caller; fallback only covers layer construction.
+        Bitmap? artwork = loadArtwork();
+        try
+        {
+            try
+            {
+                rigRenderer = createRig(artwork);
+            }
+            catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or ExternalException)
+            {
+                staticFallback = true;
+                var fallback = artwork;
+                artwork = null; // PresentOwnedFrame takes ownership even when presentation fails.
+                PresentOwnedFrame(fallback);
+                return;
+            }
+            PresentOwnedFrame(rigRenderer.Render(DesktopPetRigPose.Rest));
+        }
+        finally
+        {
+            artwork?.Dispose();
+        }
+    }
+
     public void Start()
     {
         EnsureOwnerThread();
@@ -91,10 +135,20 @@ public sealed class DesktopPetController : IDisposable
         WakeTimer();
     }
 
-    /// <summary>Hook callbacks only wake the timer; sampling and drawing happen on a later UI tick.</summary>
+    /// <summary>Maps current input to bounded visual pulses; drawing happens on a later UI tick.</summary>
     public void NotifyInputAvailable()
     {
-        if (disposed) return;
+        if (disposed || staticFallback) return;
+        var snapshot = inputState.ReadSnapshot();
+        var hasKeyboardTarget = KeyboardTargetMapper.TryMap(snapshot.ActiveVirtualKey, out var target);
+        lock (pulseGate)
+        {
+            if (disposed) return;
+            // Never queue a snapshot or virtual key. Only normalized geometry and button bits survive.
+            if (hasKeyboardTarget) pendingKeyboardPulse = target;
+            pendingLeftPulse |= snapshot.LeftButtonDown;
+            pendingRightPulse |= snapshot.RightButtonDown;
+        }
         if (Environment.CurrentManagedThreadId == ownerThreadId)
         {
             WakeTimer();
@@ -116,9 +170,20 @@ public sealed class DesktopPetController : IDisposable
         }
     }
 
+    private (PointF? Keyboard, bool Left, bool Right) TakePulses()
+    {
+        lock (pulseGate)
+        {
+            var result = (pendingKeyboardPulse, pendingLeftPulse, pendingRightPulse);
+            pendingKeyboardPulse = null;
+            pendingLeftPulse = pendingRightPulse = false;
+            return result;
+        }
+    }
+
     private void WakeTimer()
     {
-        if (disposed || !started) return;
+        if (disposed || !started || staticFallback) return;
         if (inFrameTick)
         {
             wakeDuringFrame = true;
@@ -131,7 +196,7 @@ public sealed class DesktopPetController : IDisposable
 
     private void OnFrameTick(object? sender, EventArgs eventArgs)
     {
-        if (disposed || !started || inFrameTick) return;
+        if (disposed || !started || staticFallback || inFrameTick) return;
         inFrameTick = true;
         wakeDuringFrame = false;
         // A slow frame must not leave WM_TIMER continuously ready and starve UI messages.
@@ -144,7 +209,8 @@ public sealed class DesktopPetController : IDisposable
             var area = sink is Control control
                 ? Screen.FromControl(control).WorkingArea
                 : Screen.PrimaryScreen?.WorkingArea ?? Rectangle.Empty;
-            var pose = motion.Step(snapshot, area, elapsed);
+            var pulses = TakePulses();
+            var pose = motion.Step(snapshot, area, elapsed, pulses.Keyboard, pulses.Left, pulses.Right);
             if (rigRenderer is not null)
             {
                 if (snapshot.Version != lastVersion || !lastPose.IsAtRest || !pose.IsAtRest)
@@ -152,7 +218,7 @@ public sealed class DesktopPetController : IDisposable
             }
             else if (idleSequence is not null && tapSequence is not null)
             {
-                PlaySequence(snapshot.ActiveVirtualKey != 0 || snapshot.LeftButtonDown || snapshot.RightButtonDown);
+                PlaySequence(snapshot.ActiveVirtualKey != 0 || pose.KeyboardPress > 0.002f || pose.MousePress > 0.002f);
             }
             lastVersion = snapshot.Version;
             lastPose = pose;
@@ -268,6 +334,7 @@ public sealed class DesktopPetController : IDisposable
         EnsureOwnerThread();
         disposed = true;
         started = false;
+        _ = TakePulses();
         frameTimer.Tick -= OnFrameTick;
         DisposeAssets();
         frameTimer.Dispose();

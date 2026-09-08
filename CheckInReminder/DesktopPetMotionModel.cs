@@ -32,27 +32,43 @@ public sealed class DesktopPetMotionModel
     public DesktopPetRigPose Step(
         DesktopInputSnapshot input,
         Rectangle workingArea,
-        TimeSpan elapsed)
+        TimeSpan elapsed) => Step(input, workingArea, elapsed, null, false, false);
+
+    internal DesktopPetRigPose Step(
+        DesktopInputSnapshot input,
+        Rectangle workingArea,
+        TimeSpan elapsed,
+        PointF? keyboardPulse,
+        bool leftPulse,
+        bool rightPulse)
     {
         var alpha = DampingAlpha(elapsed);
         var targetMouseOffset = NormalizeCursor(input.CursorScreen, workingArea);
-        var targetMouseRotation = input.LeftButtonDown == input.RightButtonDown
+        var leftDown = input.LeftButtonDown || leftPulse;
+        var rightDown = input.RightButtonDown || rightPulse;
+        var targetMouseRotation = leftDown == rightDown
             ? 0f
-            : input.LeftButtonDown ? -MouseTiltDegrees : MouseTiltDegrees;
-        var targetMousePress = input.LeftButtonDown || input.RightButtonDown ? 1f : 0f;
+            : leftDown ? -MouseTiltDegrees : MouseTiltDegrees;
+        var targetMousePress = leftDown || rightDown ? 1f : 0f;
 
         var hasKeyboardTarget = KeyboardTargetMapper.TryMap(input.ActiveVirtualKey, out var mappedTarget);
-        var targetKeyboardTarget = hasKeyboardTarget ? mappedTarget : NeutralKeyboardTarget;
-        var targetKeyboardPress = hasKeyboardTarget ? 1f : 0f;
+        var targetKeyboardTarget = hasKeyboardTarget ? mappedTarget : keyboardPulse ?? NeutralKeyboardTarget;
+        var targetKeyboardPress = hasKeyboardTarget || keyboardPulse.HasValue ? 1f : 0f;
+
+        // A complete tap between timer samples still reaches a visible pose.
+        // After this single step, normal damping releases it without retaining key identity.
+        var mousePressAlpha = leftPulse || rightPulse ? Math.Max(alpha, 0.6f) : alpha;
+        var keyboardAlpha = keyboardPulse.HasValue ? Math.Max(alpha, 0.6f) : alpha;
 
         mouseOffset = Damp(mouseOffset, targetMouseOffset, alpha);
-        mouseRotationDegrees = Damp(mouseRotationDegrees, targetMouseRotation, alpha);
-        mousePress = Damp(mousePress, targetMousePress, alpha);
-        keyboardTarget = Damp(keyboardTarget, targetKeyboardTarget, alpha);
-        keyboardPress = Damp(keyboardPress, targetKeyboardPress, alpha);
+        mouseRotationDegrees = Damp(mouseRotationDegrees, targetMouseRotation, mousePressAlpha);
+        mousePress = Damp(mousePress, targetMousePress, mousePressAlpha);
+        keyboardTarget = Damp(keyboardTarget, targetKeyboardTarget, keyboardAlpha);
+        keyboardPress = Damp(keyboardPress, targetKeyboardPress, keyboardAlpha);
 
-        var noInputDown = !input.LeftButtonDown
-            && !input.RightButtonDown
+        var noInputDown = !leftDown
+            && !rightDown
+            && !keyboardPulse.HasValue
             && input.ActiveVirtualKey == 0;
         var isAtRest = noInputDown
             && IsNear(mouseOffset, targetMouseOffset)

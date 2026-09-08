@@ -27,12 +27,32 @@ public sealed class WhiteBearRigRenderer : IDisposable
 
     public static WhiteBearRigRenderer Load()
     {
+        using var artwork = LoadArtwork();
+        return Create(artwork);
+    }
+
+    /// <summary>Returns owned transparent source artwork before any rig layer extraction.</summary>
+    internal static Bitmap LoadArtwork()
+    {
         using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(WhiteBearResource)
             ?? throw new InvalidOperationException($"缺少桌宠原图资源：{WhiteBearResource}");
         using var source = Image.FromStream(stream);
-        using var artwork = ResizeToArgb(source);
-        RemoveConnectedWhiteBackground(artwork);
+        var artwork = ResizeToArgb(source);
+        try
+        {
+            RemoveConnectedWhiteBackground(artwork);
+            return artwork;
+        }
+        catch
+        {
+            artwork.Dispose();
+            throw;
+        }
+    }
 
+    /// <summary>Builds owned layers; the caller retains ownership of the source artwork.</summary>
+    internal static WhiteBearRigRenderer Create(Bitmap artwork)
+    {
         Bitmap? background = null;
         Bitmap? mouse = null;
         Bitmap? keyboard = null;

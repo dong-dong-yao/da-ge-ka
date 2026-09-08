@@ -196,15 +196,274 @@ public sealed class DesktopPetControllerTests
         });
     }
 
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void KeyboardTapBeforeFirstTick_PresentsOneVisiblePressThenSettles(bool backgroundNotification)
+    {
+        RunOnStaThread(() =>
+        {
+            var sink = new FakeFrameSink();
+            var state = CenteredInput();
+            using var controller = new DesktopPetController(sink, state);
+            controller.SetCharacter(AnimationCatalog.Characters[0]);
+            using var idle = new Bitmap(sink.LastFrame!);
+            controller.Start();
+
+            void Tap()
+            {
+                state.UpdateKey(0x41, true);
+                controller.NotifyInputAvailable();
+                state.UpdateKey(0x41, false);
+                controller.NotifyInputAvailable();
+            }
+            if (backgroundNotification) Task.Run(Tap).GetAwaiter().GetResult();
+            else Tap();
+
+            Assert.AreEqual(0, state.ReadSnapshot().ActiveVirtualKey);
+            Assert.AreEqual(1, sink.FrameCount, "两次输入通知都不能同步绘图。");
+            Tick(controller);
+            Assert.IsGreaterThan(1d, MeanPixelDifference(idle, sink.LastFrame!, new Rectangle(330, 180, 130, 185)),
+                "两个 UI tick 之间完整发生的键盘短按必须可见。");
+            PumpUntil(() => !IsRendering(controller), 1000);
+            Assert.IsFalse(IsRendering(controller), "一次视觉反馈消费后必须能停表。");
+            Assert.IsLessThan(0.5d, MeanPixelDifference(idle, sink.LastFrame!));
+        });
+    }
+
+    [TestMethod]
+    [DataRow(DesktopMouseButton.Left)]
+    [DataRow(DesktopMouseButton.Right)]
+    public void MouseClickBeforeFirstTick_PresentsOneVisiblePressThenSettles(DesktopMouseButton button)
+    {
+        RunOnStaThread(() =>
+        {
+            var sink = new FakeFrameSink();
+            var state = CenteredInput();
+            using var controller = new DesktopPetController(sink, state);
+            controller.SetCharacter(AnimationCatalog.Characters[0]);
+            using var idle = new Bitmap(sink.LastFrame!);
+            controller.Start();
+
+            state.UpdateMouseButton(button, true);
+            controller.NotifyInputAvailable();
+            state.UpdateMouseButton(button, false);
+            controller.NotifyInputAvailable();
+
+            Assert.AreEqual(1, sink.FrameCount, "两次输入通知都不能同步绘图。");
+            Tick(controller);
+            Assert.IsGreaterThan(1d, MeanPixelDifference(idle, sink.LastFrame!, new Rectangle(100, 220, 175, 140)),
+                "两个 UI tick 之间完整发生的鼠标点击必须可见。");
+            PumpUntil(() => !IsRendering(controller), 1000);
+            Assert.IsFalse(IsRendering(controller));
+            Assert.IsLessThan(0.5d, MeanPixelDifference(idle, sink.LastFrame!));
+        });
+    }
+
+    private static void Tick(DesktopPetController controller) =>
+        typeof(DesktopPetController).GetMethod("OnFrameTick", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(controller, [null, EventArgs.Empty]);
+
+    [TestMethod]
+    public void RigConstructionFailure_ReplacesOldResourcesWithLiveStaticSourceUntilTeardown()
+    {
+        RunOnStaThread(() =>
+        {
+            var sink = new FakeFrameSink();
+            var state = CenteredInput();
+            Bitmap? loadedSource = null;
+            WhiteBearRigRenderer? originalRig = null;
+            var failRig = false;
+            using var controller = CreateController(sink, state,
+                () => loadedSource = LoadStaticArtwork(),
+                _ => failRig ? throw new InvalidOperationException("injected layer extraction failure")
+                    : originalRig = WhiteBearRigRenderer.Load());
+            controller.SetCharacter(AnimationCatalog.Characters[0]);
+            var originalFrame = sink.LastFrame!;
+            var successfulSource = loadedSource!;
+            Assert.Throws<ArgumentException>(() => successfulSource.GetPixel(0, 0));
+            controller.Start();
+
+            failRig = true;
+            controller.SetCharacter(AnimationCatalog.Characters[0]);
+
+            Assert.Throws<ArgumentException>(() => originalFrame.GetPixel(0, 0));
+            Assert.Throws<ObjectDisposedException>(() => originalRig!.Render(DesktopPetRigPose.Rest));
+            var fallback = sink.LastFrame!;
+            Assert.AreSame(loadedSource, fallback, "回退必须使用已经成功加载的源图。");
+            Assert.AreEqual(0, fallback.GetPixel(0, 0).A);
+            Assert.IsGreaterThan(fallback.Width * fallback.Height / 5, CountVisiblePixels(fallback));
+            controller.Start();
+            state.UpdateKey(0x41, true);
+            controller.NotifyInputAvailable();
+            Tick(controller);
+            Assert.IsFalse(IsRendering(controller), "切层失败后的静态显示不能启动实时循环。");
+            Assert.AreSame(fallback, sink.LastFrame);
+            _ = fallback.GetPixel(250, 200);
+
+            controller.Dispose();
+            Assert.IsNull(sink.LastFrame, "释放回退帧前必须清除窗口借用。");
+            Assert.Throws<ArgumentException>(() => fallback.GetPixel(0, 0));
+        });
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void SourceLoadFailure_PropagatesWithoutAttemptingRigFallback(bool corrupt)
+    {
+        RunOnStaThread(() =>
+        {
+            var sink = new FakeFrameSink();
+            var rigAttempted = false;
+            using var controller = CreateController(sink, CenteredInput(),
+                () => throw (corrupt ? new ArgumentException("corrupt source") : new InvalidOperationException("missing source")),
+                _ => { rigAttempted = true; return WhiteBearRigRenderer.Load(); });
+
+            if (corrupt)
+                Assert.Throws<ArgumentException>(() => controller.SetCharacter(AnimationCatalog.Characters[0]));
+            else
+                Assert.Throws<InvalidOperationException>(() => controller.SetCharacter(AnimationCatalog.Characters[0]));
+            Assert.IsFalse(rigAttempted, "原图不可加载时不能尝试用切层回退掩盖错误。");
+            Assert.IsNull(sink.LastFrame);
+            Assert.IsFalse(IsRendering(controller));
+        });
+    }
+
+    [TestMethod]
+    public void RigOutOfMemory_PropagatesAndReleasesTheLoadedSource()
+    {
+        RunOnStaThread(() =>
+        {
+            Bitmap? source = null;
+            var sink = new FakeFrameSink();
+            using var controller = CreateController(sink, CenteredInput(),
+                () => source = LoadStaticArtwork(), _ => throw new OutOfMemoryException("injected process failure"));
+
+            Assert.Throws<OutOfMemoryException>(() => controller.SetCharacter(AnimationCatalog.Characters[0]));
+
+            Assert.IsNotNull(source);
+            Assert.Throws<ArgumentException>(() => source.GetPixel(0, 0));
+            Assert.IsNull(sink.LastFrame);
+        });
+    }
+
+    private static DesktopPetController CreateController(
+        IPetFrameSink sink, DesktopInputState state,
+        Func<Bitmap> sourceLoader, Func<Bitmap, WhiteBearRigRenderer> rigFactory)
+    {
+        var constructor = typeof(DesktopPetController).GetConstructor(
+            BindingFlags.Instance | BindingFlags.NonPublic, null,
+            [typeof(IPetFrameSink), typeof(DesktopInputState), typeof(Func<Bitmap>), typeof(Func<Bitmap, WhiteBearRigRenderer>)], null);
+        Assert.IsNotNull(constructor, "必须能够分别注入源图加载和切层构造，以验证失败边界与所有权。");
+        return (DesktopPetController)constructor.Invoke([sink, state, sourceLoader, rigFactory]);
+    }
+
+    private static Bitmap LoadStaticArtwork() =>
+        (Bitmap)typeof(WhiteBearRigRenderer).GetMethod("LoadArtwork", BindingFlags.Static | BindingFlags.NonPublic)!
+            .Invoke(null, null)!;
+
+    [TestMethod]
+    public void BurstNotifications_CoalesceToGeometryWithoutPerEventAllocationsOrSynchronousFrames()
+    {
+        RunOnStaThread(() =>
+        {
+            var state = CenteredInput();
+            var sink = new FakeFrameSink();
+            using var controller = new DesktopPetController(sink, state);
+            controller.SetCharacter(AnimationCatalog.Characters[0]);
+            controller.Start();
+            state.UpdateKey(0x41, true);
+            controller.NotifyInputAvailable();
+            state.UpdateKey(0x41, false);
+            controller.NotifyInputAvailable();
+
+            var allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+            for (var index = 0; index < 4096; index++)
+            {
+                var key = 0x41 + index % 26;
+                state.UpdateKey(key, true);
+                controller.NotifyInputAvailable();
+                state.UpdateKey(key, false);
+                controller.NotifyInputAvailable();
+            }
+            var allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+
+            Assert.IsLessThan(16_384L, allocated, "通知路径应合并到固定字段，不能随事件次数分配队列或快照。");
+            Assert.AreEqual(1, sink.FrameCount, "突发输入也不得在通知回调里绘图。");
+            Assert.AreEqual(0, state.ReadSnapshot().ActiveVirtualKey);
+            var pulseField = typeof(DesktopPetController).GetField("pendingKeyboardPulse",
+                BindingFlags.Instance | BindingFlags.NonPublic)!;
+            Assert.AreEqual(typeof(PointF?), pulseField.FieldType, "短按只允许保留映射后的坐标。");
+            var target = (PointF)pulseField.GetValue(controller)!;
+            Assert.AreEqual(0.68f, target.X, 0.001f); // The final tap is N.
+            Assert.AreEqual(0.80f, target.Y, 0.001f);
+            Tick(controller);
+            Assert.IsNull(pulseField.GetValue(controller), "下一帧必须消费并清空一次性目标。");
+        });
+    }
+
+    [TestMethod]
+    public void RigFallback_RejectedPresentationReleasesTransferredArtwork()
+    {
+        RunOnStaThread(() =>
+        {
+            Bitmap? source = null;
+            var sink = new FakeFrameSink { RejectNextFrame = true };
+            using var controller = CreateController(sink, CenteredInput(),
+                () => source = LoadStaticArtwork(), _ => throw new InvalidOperationException("injected layer failure"));
+
+            Assert.Throws<InvalidOperationException>(() => controller.SetCharacter(AnimationCatalog.Characters[0]));
+
+            Assert.IsNotNull(source);
+            Assert.Throws<ArgumentException>(() => source.GetPixel(0, 0));
+            Assert.IsNull(sink.LastFrame);
+            Assert.IsFalse(IsRendering(controller));
+        });
+    }
+
+    [TestMethod]
+    public void RigFallback_RetryReleasesStaticFrameAndResumesLiveRendering()
+    {
+        RunOnStaThread(() =>
+        {
+            var sink = new FakeFrameSink();
+            var state = CenteredInput();
+            var failRig = true;
+            using var controller = CreateController(sink, state, LoadStaticArtwork,
+                _ => failRig ? throw new InvalidOperationException("injected layer failure") : WhiteBearRigRenderer.Load());
+            controller.SetCharacter(AnimationCatalog.Characters[0]);
+            controller.Start();
+            var fallback = sink.LastFrame!;
+
+            failRig = false;
+            controller.SetCharacter(AnimationCatalog.Characters[0]);
+
+            Assert.Throws<ArgumentException>(() => fallback.GetPixel(0, 0));
+            Assert.IsTrue(IsRendering(controller));
+            var initial = sink.LastFrame!;
+            state.UpdateKey(0x41, true);
+            controller.NotifyInputAvailable();
+            Tick(controller);
+            Assert.AreNotSame(initial, sink.LastFrame);
+        });
+    }
+
     private sealed class FakeFrameSink : IPetFrameSink
     {
         public Bitmap? LastFrame { get; private set; }
         public int FrameCount { get; private set; }
         public int LastPresentationThread { get; private set; }
         public bool CheckedPreviousFrame { get; private set; }
+        public bool RejectNextFrame { get; set; }
 
         public void SetFrame(Bitmap frame)
         {
+            if (RejectNextFrame)
+            {
+                RejectNextFrame = false;
+                throw new InvalidOperationException("injected sink rejection");
+            }
             if (LastFrame is not null)
             {
                 _ = LastFrame.GetPixel(0, 0);
@@ -216,7 +475,11 @@ public sealed class DesktopPetControllerTests
             LastPresentationThread = Environment.CurrentManagedThreadId;
         }
 
-        public void ClearFrame() => LastFrame = null;
+        public void ClearFrame()
+        {
+            if (LastFrame is not null) _ = LastFrame.GetPixel(0, 0);
+            LastFrame = null;
+        }
     }
 
     private static bool IsRendering(DesktopPetController controller) =>
