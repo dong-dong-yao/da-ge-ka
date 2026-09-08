@@ -449,6 +449,118 @@ public sealed class DesktopPetControllerTests
         });
     }
 
+    [TestMethod]
+    public void RigFallback_ClearsPulsesCapturedDuringFactoryFailure()
+    {
+        RunOnStaThread(() =>
+        {
+            var sink = new FakeFrameSink();
+            var state = CenteredInput();
+            using var barrier = new Barrier(2);
+            Task? notification = null;
+            DesktopPetController? controller = null;
+            using var ownedController = controller = CreateController(sink, state, LoadStaticArtwork, _ =>
+            {
+                notification = Task.Run(() =>
+                {
+                    Assert.IsTrue(barrier.SignalAndWait(TimeSpan.FromSeconds(2)));
+                    TapAllInputs(controller!, state);
+                    Assert.IsTrue(barrier.SignalAndWait(TimeSpan.FromSeconds(2)));
+                });
+                Assert.IsTrue(barrier.SignalAndWait(TimeSpan.FromSeconds(2)));
+                Assert.IsTrue(barrier.SignalAndWait(TimeSpan.FromSeconds(2)));
+                throw new InvalidOperationException("injected failure after complete background tap");
+            });
+            controller.Start();
+
+            controller.SetCharacter(AnimationCatalog.Characters[0]);
+            notification!.GetAwaiter().GetResult();
+
+            AssertFallbackHasNoPulses(controller, sink);
+            Task.Run(() => TapAllInputs(controller, state)).GetAwaiter().GetResult();
+            AssertFallbackHasNoPulses(controller, sink);
+        });
+    }
+
+    [TestMethod]
+    public void RigFallback_RejectsNotificationAlreadyWaitingForPulseGate()
+    {
+        RunOnStaThread(() =>
+        {
+            var sink = new FakeFrameSink();
+            var state = CenteredInput();
+            Thread? notification = null;
+            Exception? notificationFailure = null;
+            DesktopPetController? controller = null;
+            using var ownedController = controller = CreateController(sink, state, LoadStaticArtwork, _ =>
+            {
+                notification = new Thread(() =>
+                {
+                    try { TapAllInputs(controller!, state); }
+                    catch (Exception exception) { notificationFailure = exception; }
+                }) { IsBackground = true };
+                notification.Start();
+                // This worker has no waits or other contended locks before Notify's pulseGate.
+                // Holding that gate on the owner thread lets fallback enter it reentrantly
+                // while the notification remains blocked after its early fallback check.
+                Assert.IsTrue(SpinWait.SpinUntil(
+                    () => (notification.ThreadState & ThreadState.WaitSleepJoin) != 0,
+                    TimeSpan.FromSeconds(2)), "通知必须先进入等待 pulseGate 的交错位置。");
+                Assert.AreEqual(0x41, state.ReadSnapshot().ActiveVirtualKey);
+                throw new InvalidOperationException("injected failure with notification waiting at pulseGate");
+            });
+            var gate = typeof(DesktopPetController).GetField("pulseGate",
+                BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(controller)!;
+            controller.Start();
+            try
+            {
+                lock (gate)
+                {
+                    controller.SetCharacter(AnimationCatalog.Characters[0]);
+                    AssertFallbackHasNoPulses(controller, sink);
+                }
+
+                Assert.IsTrue(notification!.Join(TimeSpan.FromSeconds(2)), "回退建立后必须允许已等待的通知及时退出。");
+                Assert.IsNull(notificationFailure);
+                AssertFallbackHasNoPulses(controller, sink);
+                Task.Run(() => TapAllInputs(controller, state)).GetAwaiter().GetResult();
+                AssertFallbackHasNoPulses(controller, sink);
+            }
+            finally
+            {
+                if (notification is not null)
+                    Assert.IsTrue(notification.Join(TimeSpan.FromSeconds(2)));
+            }
+        });
+    }
+
+    private static void TapAllInputs(DesktopPetController controller, DesktopInputState state)
+    {
+        state.UpdateKey(0x41, true);
+        state.UpdateMouseButton(DesktopMouseButton.Left, true);
+        state.UpdateMouseButton(DesktopMouseButton.Right, true);
+        controller.NotifyInputAvailable();
+        state.UpdateKey(0x41, false);
+        state.UpdateMouseButton(DesktopMouseButton.Left, false);
+        state.UpdateMouseButton(DesktopMouseButton.Right, false);
+        controller.NotifyInputAvailable();
+    }
+
+    private static void AssertFallbackHasNoPulses(DesktopPetController controller, FakeFrameSink sink)
+    {
+        var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        var type = typeof(DesktopPetController);
+        var pulses = (
+            (PointF?)type.GetField("pendingKeyboardPulse", flags)!.GetValue(controller),
+            (bool)type.GetField("pendingLeftPulse", flags)!.GetValue(controller)!,
+            (bool)type.GetField("pendingRightPulse", flags)!.GetValue(controller)!);
+        Assert.AreEqual(((PointF?)null, false, false), pulses,
+            "静态回退不能保留无机会消费的键盘目标或左右键视觉脉冲。");
+        Assert.IsFalse(IsRendering(controller));
+        Assert.IsNotNull(sink.LastFrame);
+        _ = sink.LastFrame.GetPixel(0, 0);
+    }
+
     private sealed class FakeFrameSink : IPetFrameSink
     {
         public Bitmap? LastFrame { get; private set; }

@@ -113,7 +113,12 @@ public sealed class DesktopPetController : IDisposable
             }
             catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or ExternalException)
             {
-                staticFallback = true;
+                lock (pulseGate)
+                {
+                    staticFallback = true;
+                    pendingKeyboardPulse = null;
+                    pendingLeftPulse = pendingRightPulse = false;
+                }
                 var fallback = artwork;
                 artwork = null; // PresentOwnedFrame takes ownership even when presentation fails.
                 PresentOwnedFrame(fallback);
@@ -143,7 +148,7 @@ public sealed class DesktopPetController : IDisposable
         var hasKeyboardTarget = KeyboardTargetMapper.TryMap(snapshot.ActiveVirtualKey, out var target);
         lock (pulseGate)
         {
-            if (disposed) return;
+            if (disposed || staticFallback) return;
             // Never queue a snapshot or virtual key. Only normalized geometry and button bits survive.
             if (hasKeyboardTarget) pendingKeyboardPulse = target;
             pendingLeftPulse |= snapshot.LeftButtonDown;
