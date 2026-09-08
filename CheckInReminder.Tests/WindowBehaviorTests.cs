@@ -683,6 +683,43 @@ public sealed class WindowBehaviorTests
         });
     }
 
+    [TestMethod]
+    public void ThirdPartyNotice_TrayOpensExactEmbeddedTextNonModallyAndExitClosesViewer()
+    {
+        RunOnStaThread(() =>
+        {
+            var fixture = new PetInputFixture();
+            using var context = fixture.CreateContext();
+            Form? viewer = null;
+            try
+            {
+                var menu = (ContextMenuStrip)GetField(context, "trayMenu")!;
+                var item = menu.Items.Cast<ToolStripItem>().SingleOrDefault(item => item.Text == "第三方许可");
+                Assert.IsNotNull(item, "使用者必须能从托盘查看单文件 EXE 内的许可。");
+                item.PerformClick();
+
+                viewer = Application.OpenForms.Cast<Form>().Single(form => form.Text == "第三方许可");
+                Assert.IsTrue(viewer.Visible);
+                Assert.IsFalse(viewer.Modal, "查看许可不能阻塞托盘和提醒的消息循环。");
+                var text = viewer.Controls.OfType<TextBox>().Single();
+                Assert.IsTrue(text.ReadOnly);
+                using var stream = typeof(AppSettings).Assembly.GetManifestResourceStream("CheckInReminder.THIRD_PARTY_NOTICES.md")!;
+                using var reader = new StreamReader(stream);
+                Assert.AreEqual(reader.ReadToEnd().ReplaceLineEndings("\n"), text.Text.ReplaceLineEndings("\n"),
+                    "窗口必须呈现完整嵌入许可，不依赖外部文件。");
+                item.PerformClick();
+                Assert.HasCount(1, Application.OpenForms.Cast<Form>().Where(form => form.Text == "第三方许可"));
+                InvokeInstanceMethod(context, "ExitApplication");
+                Assert.IsTrue(viewer.IsDisposed, "退出程序必须关闭许可窗口。");
+            }
+            finally
+            {
+                InvokeInstanceMethod(context, "ExitApplication");
+                viewer?.Dispose();
+            }
+        });
+    }
+
     private sealed class PetInputFixture
     {
         private readonly Dictionary<int, Delegate> callbacks = new();

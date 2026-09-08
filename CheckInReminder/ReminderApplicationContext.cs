@@ -16,6 +16,7 @@ internal sealed class ReminderApplicationContext : ApplicationContext
     private readonly Action<string> showInputFailure;
     private AppSettings settings;
     private SettingsForm? settingsForm;
+    private ThirdPartyNoticesForm? thirdPartyNoticesForm;
     private AnimatedReminderSession? reminder;
     private EveningConfirmForm? confirm;
     private PetOverlayForm? desktopPetForm;
@@ -74,6 +75,11 @@ internal sealed class ReminderApplicationContext : ApplicationContext
             Padding = new Padding(16, 7, 24, 7),
         };
         exitItem.Click += (_, _) => ExitApplication();
+        var noticesItem = new ToolStripMenuItem("第三方许可")
+        {
+            Padding = new Padding(16, 7, 24, 7),
+        };
+        noticesItem.Click += (_, _) => OpenThirdPartyNotices();
 
         trayMenu = new ContextMenuStrip
         {
@@ -94,6 +100,7 @@ internal sealed class ReminderApplicationContext : ApplicationContext
             Padding = new Padding(16, 7, 24, 7),
         };
         trayMenu.Items.Add(inputStatusItem);
+        trayMenu.Items.Add(noticesItem);
         trayMenu.Items.Add(exitItem);
 
         notifyIcon = new NotifyIcon
@@ -151,6 +158,20 @@ internal sealed class ReminderApplicationContext : ApplicationContext
         settingsForm.FormClosed += (_, _) => settingsForm = null;
         settingsForm.Show();
         settingsForm.Activate();
+    }
+
+    private void OpenThirdPartyNotices()
+    {
+        if (thirdPartyNoticesForm is { IsDisposed: false })
+        {
+            thirdPartyNoticesForm.Show();
+            thirdPartyNoticesForm.Activate();
+            return;
+        }
+
+        thirdPartyNoticesForm = new ThirdPartyNoticesForm();
+        thirdPartyNoticesForm.FormClosed += (_, _) => thirdPartyNoticesForm = null;
+        thirdPartyNoticesForm.Show();
     }
 
     private string? SaveSettings(AppSettings candidate)
@@ -451,6 +472,8 @@ internal sealed class ReminderApplicationContext : ApplicationContext
             confirm = null;
             settingsForm?.Close();
             settingsForm = null;
+            thirdPartyNoticesForm?.Close();
+            thirdPartyNoticesForm = null;
             DisposeDesktopPet();
             shutdownGuard.CloseForExit();
             shutdownGuard.Dispose();

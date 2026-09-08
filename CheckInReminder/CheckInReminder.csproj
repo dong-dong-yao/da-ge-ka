@@ -22,6 +22,7 @@
   <ItemGroup>
     <EmbeddedResource Include="Assets\Animations\**\*.png" />
     <EmbeddedResource Include="Assets\DesktopPet\**\*.jpg" />
+    <EmbeddedResource Include="..\THIRD_PARTY_NOTICES.md" LogicalName="CheckInReminder.THIRD_PARTY_NOTICES.md" />
   </ItemGroup>
 
 </Project>
