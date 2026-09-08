@@ -148,10 +148,11 @@ public sealed class WhiteBearRigRenderer : IDisposable
                 destination[0].X - m11 * source.X - m21 * source.Y,
                 destination[0].Y - m12 * source.X - m22 * source.Y);
             graphics.Transform = transform;
-            // Sample the whole source through the triangle clip: cropping the bitmap
-            // per tile loses bicubic neighbors and leaves visible cracks at tile edges.
-            graphics.DrawImage(mouseArm, new Rectangle(Point.Empty, mouseArm.Size),
-                0, 0, mouseArm.Width, mouseArm.Height, GraphicsUnit.Pixel);
+            // Keep bicubic filter neighbors beyond all cell edges. The triangle
+            // clip owns coverage; limiting only the sampling rectangle avoids
+            // resampling the entire 600x448 layer for each of the 160 triangles.
+            source.Inflate(4f, 4f);
+            graphics.DrawImage(mouseArm, source, source, GraphicsUnit.Pixel);
         }
         finally
         {

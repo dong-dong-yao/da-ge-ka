@@ -1,4 +1,7 @@
 using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
+using System.Reflection;
 using System.Security.Cryptography;
 using CheckInReminder;
 
@@ -166,6 +169,73 @@ public sealed class WhiteBearRigRendererTests
         for (var x = 162; x < 178; x++)
             Assert.IsGreaterThan(235, moved.GetPixel(x, y).R,
                 $"The original white paw interior must not expose the gray pad at ({x}, {y}).");
+    }
+
+    [TestMethod]
+    public void TriangleSampling_PreservesBicubicNeighborsAndSharedEdgeCoverage()
+    {
+        using var renderer = WhiteBearRigRenderer.Load();
+        var layer = (Bitmap)typeof(WhiteBearRigRenderer).GetField("mouseArm",
+            BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(renderer)!;
+        // An alpha/color pattern crossing all tile boundaries catches missing
+        // bicubic neighbors and any duplicate blending along the shared diagonal.
+        for (var y = 250; y < 278; y++)
+        for (var x = 122; x < 150; x++)
+            layer.SetPixel(x, y, Color.FromArgb(80 + (x % 5) * 35,
+                (x % 3) * 110, (y % 3) * 110, ((x + y) % 3) * 110));
+
+        using var expected = new Bitmap(600, 448, PixelFormat.Format32bppPArgb);
+        using var actual = new Bitmap(600, 448, PixelFormat.Format32bppPArgb);
+        using var transform = new Matrix(1f, 0.03125f, -0.0625f, 1f, 8.25f, 7.5f);
+        var corners = new PointF[] { new(128, 256), new(144, 256), new(128, 272), new(144, 272) };
+        transform.TransformPoints(corners);
+        using (var graphics = Graphics.FromImage(expected))
+        {
+            graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+            foreach (var triangle in new[]
+            {
+                new[] { corners[0], corners[1], corners[2] },
+                new[] { corners[1], corners[3], corners[2] }
+            })
+            {
+                var state = graphics.Save();
+                using var clip = new GraphicsPath();
+                clip.AddPolygon(triangle);
+                graphics.SetClip(clip, CombineMode.Intersect);
+                graphics.Transform = transform;
+                // Reference the original full-bitmap sampler, retaining its
+                // clipping rasterization so only the sampling extent differs.
+                graphics.DrawImage(layer, new Rectangle(Point.Empty, layer.Size),
+                    0, 0, layer.Width, layer.Height, GraphicsUnit.Pixel);
+                graphics.Restore(state);
+            }
+        }
+
+        var drawTriangle = typeof(WhiteBearRigRenderer).GetMethod("DrawTriangle",
+            BindingFlags.Instance | BindingFlags.NonPublic)!;
+        using (var graphics = Graphics.FromImage(actual))
+        {
+            graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+            var source = new RectangleF(128, 256, 16, 16);
+            drawTriangle.Invoke(renderer, [graphics, source,
+                new[] { corners[0], corners[1], corners[2] }, new[] { corners[0], corners[1], corners[2] }]);
+            drawTriangle.Invoke(renderer, [graphics, source,
+                new[] { corners[0], corners[1], corners[2] }, new[] { corners[1], corners[3], corners[2] }]);
+        }
+
+        for (var y = 260; y < 290; y++)
+        for (var x = 115; x < 150; x++)
+        {
+            var reference = expected.GetPixel(x, y);
+            var sample = actual.GetPixel(x, y);
+            Assert.IsTrue(Math.Abs(reference.A - sample.A) <= 1
+                && Math.Abs(reference.R * reference.A - sample.R * sample.A) <= 2 * 255
+                && Math.Abs(reference.G * reference.A - sample.G * sample.A) <= 2 * 255
+                && Math.Abs(reference.B * reference.A - sample.B * sample.A) <= 2 * 255,
+                $"Triangle boundary sample at ({x}, {y}) differs from continuous source sampling: {reference} vs {sample}.");
+        }
     }
 
     [TestMethod]
