@@ -242,13 +242,9 @@ public sealed class DesktopPetController : IDisposable
 
     private static DesktopPetRigPose ToRenderPose(DesktopPetRigPose pose)
     {
-        // The model's neutral target differs from the source artwork's resting paw.
-        // Blend by press so key release returns to the original idle artwork.
-        var rest = DesktopPetRigPose.Rest;
+        // The renderer switches back to the original idle arm after rebound.
+        // Blending the target here would change the selected sprite during a tap.
         var press = pose.IsAtRest ? 0f : pose.KeyboardPress;
-        var target = new PointF(
-            rest.KeyboardTarget.X + (pose.KeyboardTarget.X - rest.KeyboardTarget.X) * press,
-            rest.KeyboardTarget.Y + (pose.KeyboardTarget.Y - rest.KeyboardTarget.Y) * press);
         var offset = pose.MouseOffset;
         if (pose.IsAtRest && Math.Abs(offset.X) < 0.002f && Math.Abs(offset.Y) < 0.002f)
             offset = PointF.Empty;
@@ -257,7 +253,6 @@ public sealed class DesktopPetController : IDisposable
             MouseOffset = offset,
             MouseRotationDegrees = pose.IsAtRest ? 0f : pose.MouseRotationDegrees,
             MousePress = pose.IsAtRest ? 0f : pose.MousePress,
-            KeyboardTarget = target,
             KeyboardPress = press
         };
     }

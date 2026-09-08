@@ -14,13 +14,15 @@ public sealed class WhiteBearRigRenderer : IDisposable
     private readonly Bitmap baseLayer;
     private readonly Bitmap mouseArm;
     private readonly Bitmap keyboardArm;
+    private readonly KeyboardPressSprites keyboardPressSprites;
     private bool disposed;
 
-    private WhiteBearRigRenderer(Bitmap baseLayer, Bitmap mouseArm, Bitmap keyboardArm)
+    private WhiteBearRigRenderer(Bitmap baseLayer, Bitmap mouseArm, Bitmap keyboardArm, KeyboardPressSprites keyboardPressSprites)
     {
         this.baseLayer = baseLayer;
         this.mouseArm = mouseArm;
         this.keyboardArm = keyboardArm;
+        this.keyboardPressSprites = keyboardPressSprites;
     }
 
     public Size FrameSize => new(RenderWidth, RenderHeight);
@@ -56,6 +58,7 @@ public sealed class WhiteBearRigRenderer : IDisposable
         Bitmap? background = null;
         Bitmap? mouse = null;
         Bitmap? keyboard = null;
+        KeyboardPressSprites? pressSprites = null;
         try
         {
             background = artwork.Clone(new Rectangle(Point.Empty, artwork.Size), PixelFormat.Format32bppPArgb);
@@ -65,13 +68,15 @@ public sealed class WhiteBearRigRenderer : IDisposable
             keyboard = Extract(artwork, keyboardMask);
             RepairMouseHole(background, artwork, mouseMask);
             RepairKeyboardHole(background, keyboardMask);
-            return new WhiteBearRigRenderer(background, mouse, keyboard);
+            pressSprites = KeyboardPressSprites.Load();
+            return new WhiteBearRigRenderer(background, mouse, keyboard, pressSprites);
         }
         catch
         {
             background?.Dispose();
             mouse?.Dispose();
             keyboard?.Dispose();
+            pressSprites?.Dispose();
             throw;
         }
     }
@@ -93,15 +98,10 @@ public sealed class WhiteBearRigRenderer : IDisposable
                 Math.Clamp(pose.MouseOffset.Y, -1f, 1f) * 8f + Math.Clamp(pose.MousePress, 0f, 1f) * 5f,
                 Math.Clamp(pose.MouseRotationDegrees, -2.5f, 2.5f));
 
-            var restTarget = MapKeyboardTarget(DesktopPetRigPose.Rest.KeyboardTarget);
-            var target = MapKeyboardTarget(pose.KeyboardTarget);
-            var pivot = At(0.66f, 0.35f);
-            var angle = (float)((Math.Atan2(target.Y - pivot.Y, target.X - pivot.X)
-                - Math.Atan2(restTarget.Y - pivot.Y, restTarget.X - pivot.X)) * 180d / Math.PI);
-            DrawArm(graphics, keyboardArm, pivot,
-                Math.Clamp(target.X - restTarget.X, -48f, 48f),
-                Math.Clamp(target.Y - restTarget.Y, 0f, 52f) + Math.Clamp(pose.KeyboardPress, 0f, 1f) * 6f,
-                Math.Clamp(angle, -8f, 8f));
+            if (pose.KeyboardPress <= 0.01f)
+                graphics.DrawImageUnscaled(keyboardArm, Point.Empty);
+            else
+                keyboardPressSprites.Draw(graphics, pose.KeyboardTarget, pose.KeyboardPress);
             return frame;
         }
         catch
@@ -178,40 +178,6 @@ public sealed class WhiteBearRigRenderer : IDisposable
         {
             graphics.Restore(state);
         }
-    }
-
-    private static void DrawArm(Graphics graphics, Bitmap arm, PointF pivot, float dx, float dy, float angle)
-    {
-        var state = graphics.Save();
-        try
-        {
-            if (dx == 0f && dy == 0f && angle == 0f)
-            {
-                graphics.DrawImageUnscaled(arm, Point.Empty);
-                return;
-            }
-
-            using var transform = new Matrix();
-            transform.Translate(-pivot.X, -pivot.Y, MatrixOrder.Append);
-            transform.Rotate(angle, MatrixOrder.Append);
-            transform.Translate(pivot.X + dx, pivot.Y + dy, MatrixOrder.Append);
-            graphics.Transform = transform;
-            graphics.DrawImage(arm, new Rectangle(Point.Empty, arm.Size),
-                0, 0, arm.Width, arm.Height, GraphicsUnit.Pixel);
-        }
-        finally
-        {
-            graphics.Restore(state);
-        }
-    }
-
-    private static PointF MapKeyboardTarget(PointF target)
-    {
-        var u = Math.Clamp(target.X, 0f, 1f);
-        var v = Math.Clamp(target.Y, 0f, 1f);
-        var top = Interpolate(At(0.39f, 0.55f), At(0.83f, 0.60f), u);
-        var bottom = Interpolate(At(0.35f, 0.77f), At(0.80f, 0.92f), u);
-        return Interpolate(top, bottom, v);
     }
 
     private static PointF Interpolate(PointF first, PointF second, float amount) =>
@@ -435,5 +401,6 @@ public sealed class WhiteBearRigRenderer : IDisposable
         baseLayer.Dispose();
         mouseArm.Dispose();
         keyboardArm.Dispose();
+        keyboardPressSprites.Dispose();
     }
 }

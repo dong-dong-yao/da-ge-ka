@@ -105,7 +105,7 @@ public sealed class DesktopPetMotionModelTests
     }
 
     [TestMethod]
-    public void UnknownActiveKey_ReleasesLastValidKeyboardTarget()
+    public void UnknownActiveKey_ReboundsAtTheLastValidKeyboardTarget()
     {
         var model = new DesktopPetMotionModel();
         var area = new Rectangle(0, 0, 100, 100);
@@ -113,8 +113,31 @@ public sealed class DesktopPetMotionModelTests
 
         var unknown = model.Step(Snapshot(key: 0x2E), area, OneFrame);
 
-        Assert.IsGreaterThan(valid.KeyboardTarget.X, unknown.KeyboardTarget.X);
+        Assert.AreEqual(valid.KeyboardTarget.X, unknown.KeyboardTarget.X,
+            "Keep the same pressed sprite while a released or unsupported key rebounds.");
         Assert.IsLessThan(valid.KeyboardPress, unknown.KeyboardPress);
+    }
+
+    [TestMethod]
+    [DataRow(0x51, 0.10f)]
+    [DataRow(0x47, 0.50f)]
+    [DataRow(0x50, 0.90f)]
+    public void FirstKeySample_SelectsItsOwnZoneAndHoldsItThroughoutRelease(int key, float targetX)
+    {
+        var model = new DesktopPetMotionModel();
+        var area = new Rectangle(0, 0, 100, 100);
+        var pressed = model.Step(Snapshot(key: key), area, OneFrame);
+        Assert.AreEqual(targetX, pressed.KeyboardTarget.X, 0.001f,
+            "The first strike must select the actual key zone, without crossing intermediate sprites.");
+        for (var frame = 0; frame < 30; frame++) pressed = model.Step(Snapshot(key: key), area, OneFrame);
+        Assert.IsGreaterThan(0.99f, pressed.KeyboardPress);
+        Assert.IsFalse(pressed.IsAtRest);
+        var released = model.Step(Snapshot(), area, OneFrame);
+        Assert.AreEqual(targetX, released.KeyboardTarget.X, 0.001f);
+        Assert.IsLessThan(pressed.KeyboardPress, released.KeyboardPress);
+        for (var frame = 0; frame < 120; frame++) released = model.Step(Snapshot(), area, OneFrame);
+        Assert.AreEqual(0.5f, released.KeyboardTarget.X, 0.002f);
+        Assert.IsTrue(released.IsAtRest);
     }
 
     [TestMethod]

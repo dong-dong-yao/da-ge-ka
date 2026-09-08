@@ -225,6 +225,8 @@ public sealed class DesktopPetControllerTests
             Tick(controller);
             Assert.IsGreaterThan(1d, MeanPixelDifference(idle, sink.LastFrame!, new Rectangle(330, 180, 130, 185)),
                 "两个 UI tick 之间完整发生的键盘短按必须可见。");
+            Assert.IsGreaterThan(3d, MeanPixelDifference(idle, sink.LastFrame!, new Rectangle(355, 316, 60, 30)),
+                "短按首帧必须进入用户提供的左区按压素材并触键，不能只把旧抬手平移。");
             PumpUntil(() => !IsRendering(controller), 1000);
             Assert.IsFalse(IsRendering(controller), "一次视觉反馈消费后必须能停表。");
             Assert.IsLessThan(0.5d, MeanPixelDifference(idle, sink.LastFrame!));

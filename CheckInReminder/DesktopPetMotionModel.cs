@@ -63,8 +63,13 @@ public sealed class DesktopPetMotionModel
         mouseOffset = Damp(mouseOffset, targetMouseOffset, alpha);
         mouseRotationDegrees = Damp(mouseRotationDegrees, targetMouseRotation, mousePressAlpha);
         mousePress = Damp(mousePress, targetMousePress, mousePressAlpha);
-        keyboardTarget = Damp(keyboardTarget, targetKeyboardTarget, keyboardAlpha);
         keyboardPress = Damp(keyboardPress, targetKeyboardPress, keyboardAlpha);
+        // A strike selects its actual zone on the first sample. Keep that X during
+        // rebound; damping X through neutral would briefly show a different paw.
+        var keyboardX = targetKeyboardPress > 0f && keyboardAlpha > 0f
+            ? targetKeyboardTarget.X
+            : keyboardPress <= RestTolerance ? NeutralKeyboardTarget.X : keyboardTarget.X;
+        keyboardTarget = new PointF(keyboardX, Damp(keyboardTarget.Y, targetKeyboardTarget.Y, keyboardAlpha));
 
         var noInputDown = !leftDown
             && !rightDown
