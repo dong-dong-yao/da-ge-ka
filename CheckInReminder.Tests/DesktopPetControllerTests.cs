@@ -500,6 +500,172 @@ public sealed class DesktopPetControllerTests
     }
 
     [TestMethod]
+    public void FallbackHeldKeyboard_ResumeTickConsumesSequenceSoRepeatCannotReplayAfterRelease()
+    {
+        RunOnStaThread(() =>
+        {
+            var sink = new FakeFrameSink();
+            var state = CenteredInput();
+            var failRig = true;
+            using var controller = CreateController(sink, state, LoadStaticArtwork,
+                _ => failRig ? throw new InvalidOperationException("injected fallback") : WhiteBearRigRenderer.Load());
+            controller.SetCharacter(AnimationCatalog.Characters[0]);
+            controller.Start();
+            state.UpdateKey(0x47, true);
+            controller.NotifyInputAvailable(); // Ignored while the static fallback is active.
+
+            failRig = false;
+            controller.SetCharacter(AnimationCatalog.Characters[0]);
+            var idleHash = RawPixelHash(sink.LastFrame!);
+            Tick(controller); // The live snapshot itself presents the held key.
+            Assert.IsTrue(LastPose(controller).KeyboardContact);
+
+            state.UpdateKey(0x47, true);
+            controller.NotifyInputAvailable();
+            state.UpdateKey(0x47, false);
+            controller.NotifyInputAvailable();
+            Tick(controller);
+
+            Assert.AreEqual(idleHash, RawPixelHash(sink.LastFrame!),
+                "A held key already shown after fallback must not be replayed by repeat notification.");
+            Assert.IsFalse(IsRendering(controller));
+        });
+    }
+
+    [TestMethod]
+    public void FallbackHeldMouse_ResumeTicksConsumeSequenceSoMoveCannotReplayClickAfterRelease()
+    {
+        RunOnStaThread(() =>
+        {
+            var sink = new FakeFrameSink();
+            var state = CenteredInput();
+            var failRig = true;
+            using var controller = CreateController(sink, state, LoadStaticArtwork,
+                _ => failRig ? throw new InvalidOperationException("injected fallback") : WhiteBearRigRenderer.Load());
+            controller.SetCharacter(AnimationCatalog.Characters[0]);
+            controller.Start();
+            state.UpdateMouseButton(DesktopMouseButton.Left, true);
+            controller.NotifyInputAvailable(); // Ignored while the static fallback is active.
+
+            failRig = false;
+            controller.SetCharacter(AnimationCatalog.Characters[0]);
+            PumpUntil(() => LastPose(controller).MousePress >= 0.2f, 1000);
+            var heldPress = LastPose(controller).MousePress;
+
+            var area = Screen.PrimaryScreen!.WorkingArea;
+            state.UpdatePointer(area.Left + area.Width / 2 + 1, area.Top + area.Height / 2);
+            controller.NotifyInputAvailable();
+            state.UpdateMouseButton(DesktopMouseButton.Left, true);
+            controller.NotifyInputAvailable();
+            CenterPointer(state);
+            controller.NotifyInputAvailable();
+            state.UpdateMouseButton(DesktopMouseButton.Left, false);
+            controller.NotifyInputAvailable();
+            Tick(controller);
+            var releasedPress = LastPose(controller).MousePress;
+
+            Assert.IsLessThanOrEqualTo(heldPress, releasedPress,
+                $"A held mouse already shown after fallback must decay, not replay ({heldPress:F3} -> {releasedPress:F3}).");
+        });
+    }
+
+    [TestMethod]
+    public void ConcurrentMouseReleaseCannotAdvanceSequenceBeforeDelayedDownQueuesItsTap()
+    {
+        RunOnStaThread(() =>
+        {
+            var sink = new FakeFrameSink();
+            var state = CenteredInput();
+            using var controller = new DesktopPetController(sink, state);
+            controller.SetCharacter(AnimationCatalog.Characters[0]);
+            controller.Start();
+            Tick(controller);
+            var gate = typeof(DesktopPetController).GetField("pulseGate",
+                BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(controller)!;
+            Thread? delayedDown = null;
+            Exception? notificationFailure = null;
+            try
+            {
+                lock (gate)
+                {
+                    state.UpdateMouseButton(DesktopMouseButton.Left, true);
+                    delayedDown = new Thread(() =>
+                    {
+                        try { controller.NotifyInputAvailable(); }
+                        catch (Exception exception) { notificationFailure = exception; }
+                    }) { IsBackground = true };
+                    delayedDown.Start();
+                    Assert.IsTrue(SpinWait.SpinUntil(
+                        () => (delayedDown.ThreadState & ThreadState.WaitSleepJoin) != 0,
+                        TimeSpan.FromSeconds(2)), "Down notification must be waiting after its down snapshot.");
+
+                    state.UpdateMouseButton(DesktopMouseButton.Left, false);
+                    controller.NotifyInputAvailable(); // Re-enters gate first with the release snapshot.
+                }
+                Assert.IsTrue(delayedDown.Join(TimeSpan.FromSeconds(2)));
+                Assert.IsNull(notificationFailure);
+                Tick(controller);
+
+                Assert.IsGreaterThanOrEqualTo(0.59f, LastPose(controller).MousePress,
+                    "The complete concurrent click must retain its one-shot visual pulse.");
+            }
+            finally
+            {
+                if (delayedDown is not null) Assert.IsTrue(delayedDown.Join(TimeSpan.FromSeconds(2)));
+            }
+        });
+    }
+
+    [TestMethod]
+    public void ConcurrentKeyboardReleaseDoesNotSwallowDelayedDownTap()
+    {
+        RunOnStaThread(() =>
+        {
+            var sink = new FakeFrameSink();
+            var state = CenteredInput();
+            using var controller = new DesktopPetController(sink, state);
+            controller.SetCharacter(AnimationCatalog.Characters[0]);
+            var idleHash = RawPixelHash(sink.LastFrame!);
+            controller.Start();
+            Tick(controller);
+            var gate = typeof(DesktopPetController).GetField("pulseGate",
+                BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(controller)!;
+            Thread? delayedDown = null;
+            Exception? notificationFailure = null;
+            try
+            {
+                lock (gate)
+                {
+                    state.UpdateKey(0x41, true);
+                    delayedDown = new Thread(() =>
+                    {
+                        try { controller.NotifyInputAvailable(); }
+                        catch (Exception exception) { notificationFailure = exception; }
+                    }) { IsBackground = true };
+                    delayedDown.Start();
+                    Assert.IsTrue(SpinWait.SpinUntil(
+                        () => (delayedDown.ThreadState & ThreadState.WaitSleepJoin) != 0,
+                        TimeSpan.FromSeconds(2)), "Down notification must be waiting after its down snapshot.");
+
+                    state.UpdateKey(0x41, false);
+                    controller.NotifyInputAvailable();
+                }
+                Assert.IsTrue(delayedDown.Join(TimeSpan.FromSeconds(2)));
+                Assert.IsNull(notificationFailure);
+                Tick(controller);
+
+                Assert.IsTrue(LastPose(controller).KeyboardContact);
+                Assert.AreNotEqual(idleHash, RawPixelHash(sink.LastFrame!),
+                    "Keyboard release snapshots carry no sequence and must not swallow a delayed down tap.");
+            }
+            finally
+            {
+                if (delayedDown is not null) Assert.IsTrue(delayedDown.Join(TimeSpan.FromSeconds(2)));
+            }
+        });
+    }
+
+    [TestMethod]
     [DataRow(DesktopMouseButton.Left)]
     [DataRow(DesktopMouseButton.Right)]
     public void MouseClickBeforeFirstTick_PresentsOneVisiblePressThenSettles(DesktopMouseButton button)

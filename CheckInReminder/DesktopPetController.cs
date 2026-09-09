@@ -159,15 +159,17 @@ public sealed class DesktopPetController : IDisposable
                 lastQueuedKeyboardPressSequence = snapshot.ActiveKeyPressSequence;
                 if (hasKeyboardTarget) pendingKeyboardPulse = target;
             }
-            if (snapshot.LeftButtonPressSequence > lastQueuedLeftButtonPressSequence)
+            if (snapshot.LeftButtonDown
+                && snapshot.LeftButtonPressSequence > lastQueuedLeftButtonPressSequence)
             {
                 lastQueuedLeftButtonPressSequence = snapshot.LeftButtonPressSequence;
-                pendingLeftPulse |= snapshot.LeftButtonDown;
+                pendingLeftPulse = true;
             }
-            if (snapshot.RightButtonPressSequence > lastQueuedRightButtonPressSequence)
+            if (snapshot.RightButtonDown
+                && snapshot.RightButtonPressSequence > lastQueuedRightButtonPressSequence)
             {
                 lastQueuedRightButtonPressSequence = snapshot.RightButtonPressSequence;
-                pendingRightPulse |= snapshot.RightButtonDown;
+                pendingRightPulse = true;
             }
         }
         if (Environment.CurrentManagedThreadId == ownerThreadId)
@@ -191,10 +193,24 @@ public sealed class DesktopPetController : IDisposable
         }
     }
 
-    private (PointF? Keyboard, bool Left, bool Right) TakePulses()
+    private (PointF? Keyboard, bool Left, bool Right) TakePulses(DesktopInputSnapshot? sampledInput = null)
     {
         lock (pulseGate)
         {
+            if (sampledInput is { } snapshot)
+            {
+                // A live held snapshot is itself a presented/consumed press. Advance
+                // the same watermarks atomically with pulse consumption so later
+                // repeat, fallback, or mouse-move notifications cannot replay it.
+                if (snapshot.ActiveKeyPressSequence > lastQueuedKeyboardPressSequence)
+                    lastQueuedKeyboardPressSequence = snapshot.ActiveKeyPressSequence;
+                if (snapshot.LeftButtonDown
+                    && snapshot.LeftButtonPressSequence > lastQueuedLeftButtonPressSequence)
+                    lastQueuedLeftButtonPressSequence = snapshot.LeftButtonPressSequence;
+                if (snapshot.RightButtonDown
+                    && snapshot.RightButtonPressSequence > lastQueuedRightButtonPressSequence)
+                    lastQueuedRightButtonPressSequence = snapshot.RightButtonPressSequence;
+            }
             var result = (pendingKeyboardPulse, pendingLeftPulse, pendingRightPulse);
             pendingKeyboardPulse = null;
             pendingLeftPulse = pendingRightPulse = false;
@@ -230,7 +246,7 @@ public sealed class DesktopPetController : IDisposable
             var area = sink is Control control
                 ? Screen.FromControl(control).WorkingArea
                 : Screen.PrimaryScreen?.WorkingArea ?? Rectangle.Empty;
-            var pulses = TakePulses();
+            var pulses = TakePulses(snapshot);
             var pose = motion.Step(snapshot, area, elapsed, pulses.Keyboard, pulses.Left, pulses.Right);
             if (rigRenderer is not null)
             {
