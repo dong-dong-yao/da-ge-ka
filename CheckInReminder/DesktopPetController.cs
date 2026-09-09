@@ -318,20 +318,14 @@ public sealed class DesktopPetController : IDisposable
     private void PlaySpritePose(DesktopPetRigPose pose)
     {
         var frameKey = 0;
-        Bitmap frame;
         if (pose.KeyboardContact)
         {
             var keyboardPose = PetKeyboardPoseMapper.Map(pose.KeyboardTarget.X, spriteSet!.HasCenterPose);
             frameKey = 1 + (int)keyboardPose;
-            frame = spriteSet.GetPressed(keyboardPose);
-        }
-        else
-        {
-            frame = spriteSet!.Idle;
         }
 
-        if (currentFrame == frameKey) return;
-        sink.SetFrame(frame);
+        if (currentFrame == frameKey && pose == lastPose) return;
+        PresentOwnedFrame(spriteSet!.Render(pose));
         currentFrame = frameKey;
     }
 

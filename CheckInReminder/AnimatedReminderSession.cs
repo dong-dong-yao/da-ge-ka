@@ -26,7 +26,11 @@ internal sealed class AnimatedReminderSession : IDisposable
             reminderCharacter.Duration,
             reminderCharacter.Loop);
         var edge = ReminderEdgeSelector.Select(reminderCharacter, Random.Shared);
-        character = new LayeredAnimationForm(sequence.Frames[0].Size, edge, CharacterScale);
+        character = new LayeredAnimationForm(
+            sequence.Frames[0].Size,
+            reminderCharacter.SourceEdge,
+            edge,
+            CharacterScale);
         bubble = new ReminderBubbleForm(kind, () => Finish(clicked: true));
         PositionWindows(edge);
 

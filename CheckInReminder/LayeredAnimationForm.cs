@@ -9,18 +9,18 @@ internal sealed class LayeredAnimationForm : Form
     private const int WsExTransparent = 0x00000020;
     private const int WsExNoActivate = 0x08000000;
     private const int WsExToolWindow = 0x00000080;
-    private readonly ScreenEdge edge;
+    private readonly ReminderFrameTransform transform;
     private readonly double scale;
 
-    public LayeredAnimationForm(Size sourceSize, ScreenEdge edge, double scale)
+    public LayeredAnimationForm(Size sourceSize, ScreenEdge sourceEdge, ScreenEdge targetEdge, double scale)
     {
-        this.edge = edge;
+        transform = ReminderFrameTransformResolver.Resolve(sourceEdge, targetEdge);
         this.scale = scale;
         FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false;
         TopMost = true;
         StartPosition = FormStartPosition.Manual;
-        Size = GetRenderedSize(sourceSize, edge, scale);
+        Size = GetRenderedSize(sourceSize, transform, scale);
     }
 
     protected override bool ShowWithoutActivation => true;
@@ -35,23 +35,23 @@ internal sealed class LayeredAnimationForm : Form
         }
     }
 
-    public static Size GetRenderedSize(Size sourceSize, ScreenEdge edge, double scale)
+    public static Size GetRenderedSize(Size sourceSize, ReminderFrameTransform transform, double scale)
     {
         var scaled = new Size(
             Math.Max(1, (int)Math.Round(sourceSize.Width * scale)),
             Math.Max(1, (int)Math.Round(sourceSize.Height * scale)));
-        return edge is ScreenEdge.Top or ScreenEdge.Bottom
+        return ReminderFrameTransformResolver.SwapsAxes(transform)
             ? new Size(scaled.Height, scaled.Width)
             : scaled;
     }
 
     public void SetFrame(Bitmap source)
     {
-        using var rendered = RenderFrame(source, edge, scale);
+        using var rendered = RenderFrame(source, transform, scale);
         LayeredWindowPresenter.Present(Handle, new Point(Left, Top), rendered);
     }
 
-    private static Bitmap RenderFrame(Bitmap source, ScreenEdge edge, double scale)
+    private static Bitmap RenderFrame(Bitmap source, ReminderFrameTransform transform, double scale)
     {
         var width = Math.Max(1, (int)Math.Round(source.Width * scale));
         var height = Math.Max(1, (int)Math.Round(source.Height * scale));
@@ -66,11 +66,12 @@ internal sealed class LayeredAnimationForm : Form
             graphics.DrawImage(source, new Rectangle(0, 0, width, height));
         }
 
-        result.RotateFlip(edge switch
+        result.RotateFlip(transform switch
         {
-            ScreenEdge.Left => RotateFlipType.RotateNoneFlipX,
-            ScreenEdge.Top => RotateFlipType.Rotate270FlipNone,
-            ScreenEdge.Bottom => RotateFlipType.Rotate90FlipNone,
+            ReminderFrameTransform.FlipHorizontal => RotateFlipType.RotateNoneFlipX,
+            ReminderFrameTransform.FlipVertical => RotateFlipType.RotateNoneFlipY,
+            ReminderFrameTransform.RotateClockwise => RotateFlipType.Rotate90FlipNone,
+            ReminderFrameTransform.RotateCounterClockwise => RotateFlipType.Rotate270FlipNone,
             _ => RotateFlipType.RotateNoneFlipNone,
         });
         return result;

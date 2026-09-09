@@ -17,6 +17,8 @@ public sealed record ReminderCharacter(
 
     public IReadOnlyList<ScreenEdge> AllowedEdges { get; init; } = EveryEdge;
 
+    public ScreenEdge SourceEdge { get; init; } = ScreenEdge.Right;
+
     public string PetIdleSequenceName => $"{Id}-pet-idle";
 
     public string PetTapSequenceName => $"{Id}-pet-tap";

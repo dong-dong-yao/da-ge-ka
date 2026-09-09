@@ -35,6 +35,14 @@ internal sealed class DesktopPetSpriteSet : IDisposable
         _ => right,
     });
 
+    public Bitmap Render(DesktopPetRigPose pose)
+    {
+        var source = pose.KeyboardContact
+            ? GetPressed(PetKeyboardPoseMapper.Map(pose.KeyboardTarget.X, HasCenterPose))
+            : Idle;
+        return RenderMouseMotion(source, pose);
+    }
+
     public static bool HasResources(string characterId)
     {
         var names = Assembly.GetExecutingAssembly().GetManifestResourceNames();
@@ -112,6 +120,115 @@ internal sealed class DesktopPetSpriteSet : IDisposable
         {
             result.Dispose();
             throw;
+        }
+    }
+
+    private static Bitmap RenderMouseMotion(Bitmap source, DesktopPetRigPose pose)
+    {
+        var result = source.Clone(
+            new Rectangle(Point.Empty, source.Size),
+            PixelFormat.Format32bppPArgb);
+        var dx = Math.Clamp(pose.MouseOffset.X, -1f, 1f) * 12f;
+        var dy = Math.Clamp(pose.MouseOffset.Y, -1f, 1f) * 8f
+            + Math.Clamp(pose.MousePress, 0f, 1f) * 5f;
+        var angle = Math.Clamp(pose.MouseRotationDegrees, -2.5f, 2.5f);
+        if (Math.Abs(dx) < 0.01f && Math.Abs(dy) < 0.01f && Math.Abs(angle) < 0.01f)
+            return result;
+
+        var region = new Rectangle(0, 128, 352, 320);
+        using var graphics = Graphics.FromImage(result);
+        graphics.CompositingMode = CompositingMode.SourceCopy;
+        graphics.CompositingQuality = CompositingQuality.HighQuality;
+        graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+        graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+        using (var transparent = new SolidBrush(Color.Transparent))
+            graphics.FillRectangle(transparent, region);
+
+        PointF Deform(PointF point)
+        {
+            const float shoulderX = 270f;
+            const float shoulderY = 205f;
+            const float pawX = 145f;
+            const float pawY = 330f;
+            var armX = pawX - shoulderX;
+            var armY = pawY - shoulderY;
+            var along = Math.Clamp(
+                ((point.X - shoulderX) * armX + (point.Y - shoulderY) * armY)
+                / ((armX * armX) + (armY * armY)),
+                0f,
+                1f);
+            var closestX = shoulderX + armX * along;
+            var closestY = shoulderY + armY * along;
+            var crossX = (point.X - closestX) / 105f;
+            var crossY = (point.Y - closestY) / 105f;
+            var armWeight = along * MathF.Exp(-(crossX * crossX + crossY * crossY));
+            var edgeWeight = Math.Min(1f, Math.Min(
+                Math.Min((point.X - region.Left) / 32f, (region.Right - point.X) / 32f),
+                Math.Min((point.Y - region.Top) / 32f, (region.Bottom - point.Y) / 32f)));
+            var weight = Math.Clamp(armWeight * Math.Max(0f, edgeWeight), 0f, 1f);
+
+            var radians = angle * Math.PI / 180d;
+            var cosine = (float)Math.Cos(radians);
+            var sine = (float)Math.Sin(radians);
+            var localX = point.X - shoulderX;
+            var localY = point.Y - shoulderY;
+            var movedX = shoulderX + localX * cosine - localY * sine + dx;
+            var movedY = shoulderY + localX * sine + localY * cosine + dy;
+            return new PointF(
+                point.X + (movedX - point.X) * weight,
+                point.Y + (movedY - point.Y) * weight);
+        }
+
+        const int cell = 32;
+        for (var y = region.Top; y < region.Bottom; y += cell)
+        for (var x = region.Left; x < region.Right; x += cell)
+        {
+            var width = Math.Min(cell, region.Right - x);
+            var height = Math.Min(cell, region.Bottom - y);
+            var sourceCell = new RectangleF(x, y, width, height);
+            var topLeft = Deform(new PointF(x, y));
+            var topRight = Deform(new PointF(x + width, y));
+            var bottomLeft = Deform(new PointF(x, y + height));
+            var bottomRight = Deform(new PointF(x + width, y + height));
+            DrawTriangle(graphics, source, sourceCell,
+                [topLeft, topRight, bottomLeft], [topLeft, topRight, bottomLeft]);
+            var opposite = new PointF(
+                topRight.X + bottomLeft.X - bottomRight.X,
+                topRight.Y + bottomLeft.Y - bottomRight.Y);
+            DrawTriangle(graphics, source, sourceCell,
+                [opposite, topRight, bottomLeft], [topRight, bottomRight, bottomLeft]);
+        }
+        return result;
+    }
+
+    private static void DrawTriangle(
+        Graphics graphics,
+        Bitmap source,
+        RectangleF sourceBounds,
+        PointF[] destination,
+        PointF[] triangle)
+    {
+        var state = graphics.Save();
+        try
+        {
+            using var clip = new GraphicsPath();
+            clip.AddPolygon(triangle);
+            graphics.SetClip(clip, CombineMode.Intersect);
+            var m11 = (destination[1].X - destination[0].X) / sourceBounds.Width;
+            var m12 = (destination[1].Y - destination[0].Y) / sourceBounds.Width;
+            var m21 = (destination[2].X - destination[0].X) / sourceBounds.Height;
+            var m22 = (destination[2].Y - destination[0].Y) / sourceBounds.Height;
+            using var transform = new Matrix(
+                m11, m12, m21, m22,
+                destination[0].X - m11 * sourceBounds.X - m21 * sourceBounds.Y,
+                destination[0].Y - m12 * sourceBounds.X - m22 * sourceBounds.Y);
+            graphics.Transform = transform;
+            sourceBounds.Inflate(3f, 3f);
+            graphics.DrawImage(source, sourceBounds, sourceBounds, GraphicsUnit.Pixel);
+        }
+        finally
+        {
+            graphics.Restore(state);
         }
     }
 

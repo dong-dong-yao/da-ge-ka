@@ -20,13 +20,18 @@ public static class AnimationCatalog
         [
             new(DefaultCharacterId, "白熊", "Edge", EdgeDuration, EdgeLoops),
             new("yellow-hippo", "黄色河马", "yellow-hippo", EdgeDuration, false),
-            new("blue-hat-cat", "蓝帽小猫", "blue-hat-cat", EdgeDuration, false),
+            new("blue-hat-cat", "蓝帽小猫", "blue-hat-cat", EdgeDuration, false)
+            {
+                SourceEdge = ScreenEdge.Bottom,
+            },
             new("stick-dog", "持棒小狗", "stick-dog", EdgeDuration, false)
             {
+                SourceEdge = ScreenEdge.Left,
                 AllowedEdges = Array.AsReadOnly(new[] { ScreenEdge.Left, ScreenEdge.Right }),
             },
             new("scooter-dinosaur", "滑板绿恐龙", "scooter-dinosaur", EdgeDuration, false)
             {
+                SourceEdge = ScreenEdge.Left,
                 AllowedEdges = Array.AsReadOnly(new[] { ScreenEdge.Left, ScreenEdge.Right }),
             },
         ];

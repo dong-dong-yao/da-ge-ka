@@ -11,6 +11,36 @@ namespace CheckInReminder.Tests;
 public sealed class DesktopPetControllerTests
 {
     [TestMethod]
+    [DataRow("yellow-hippo")]
+    [DataRow("blue-hat-cat")]
+    [DataRow("stick-dog")]
+    [DataRow("scooter-dinosaur")]
+    public void SpritePets_MousePointerMovesOnlyTheMouseSideOfTheArtwork(string characterId)
+    {
+        RunOnStaThread(() =>
+        {
+            var sink = new FakeFrameSink();
+            var state = CenteredInput();
+            using var controller = new DesktopPetController(sink, state);
+            controller.SetCharacter(AnimationCatalog.FindCharacter(characterId)!);
+            using var idle = new Bitmap(sink.LastFrame!);
+            controller.Start();
+
+            var area = Screen.PrimaryScreen!.WorkingArea;
+            state.UpdatePointer(area.Right, area.Top);
+            controller.NotifyInputAvailable();
+            PumpEvents(120);
+
+            Assert.IsGreaterThan(0.5d,
+                MeanPixelDifference(idle, sink.LastFrame!, new Rectangle(0, 150, 330, 280)),
+                $"{characterId} 的鼠标手臂区域必须跟随指针产生可见移动");
+            Assert.IsLessThan(0.05d,
+                MeanPixelDifference(idle, sink.LastFrame!, new Rectangle(360, 160, 220, 210)),
+                $"{characterId} 的鼠标移动不能带动键盘侧素材");
+        });
+    }
+
+    [TestMethod]
     [DataRow("yellow-hippo", 3)]
     [DataRow("blue-hat-cat", 3)]
     [DataRow("stick-dog", 2)]
