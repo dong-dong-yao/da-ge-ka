@@ -98,7 +98,7 @@ public sealed class WhiteBearRigRenderer : IDisposable
                 Math.Clamp(pose.MouseOffset.Y, -1f, 1f) * 8f + Math.Clamp(pose.MousePress, 0f, 1f) * 5f,
                 Math.Clamp(pose.MouseRotationDegrees, -2.5f, 2.5f));
 
-            if (pose.KeyboardPress <= 0.01f)
+            if (!pose.KeyboardContact)
                 graphics.DrawImageUnscaled(keyboardArm, Point.Empty);
             else
                 keyboardPressSprites.Draw(graphics, pose.KeyboardTarget, pose.KeyboardPress);

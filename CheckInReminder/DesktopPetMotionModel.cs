@@ -8,10 +8,11 @@ public readonly record struct DesktopPetRigPose(
     float MousePress,
     PointF KeyboardTarget,
     float KeyboardPress,
+    bool KeyboardContact,
     bool IsAtRest)
 {
     public static DesktopPetRigPose Rest => new(
-        PointF.Empty, 0f, 0f, new PointF(0.64f, 0.34f), 0f, true);
+        PointF.Empty, 0f, 0f, new PointF(0.64f, 0.34f), 0f, false, true);
 }
 
 /// <summary>
@@ -53,7 +54,8 @@ public sealed class DesktopPetMotionModel
 
         var hasKeyboardTarget = KeyboardTargetMapper.TryMap(input.ActiveVirtualKey, out var mappedTarget);
         var targetKeyboardTarget = hasKeyboardTarget ? mappedTarget : keyboardPulse ?? NeutralKeyboardTarget;
-        var targetKeyboardPress = hasKeyboardTarget || keyboardPulse.HasValue ? 1f : 0f;
+        var keyboardContact = hasKeyboardTarget || keyboardPulse.HasValue;
+        var targetKeyboardPress = keyboardContact ? 1f : 0f;
 
         // A complete tap between timer samples still reaches a visible pose.
         // After this single step, normal damping releases it without retaining key identity.
@@ -78,17 +80,22 @@ public sealed class DesktopPetMotionModel
         var isAtRest = noInputDown
             && IsNear(mouseOffset, targetMouseOffset)
             && IsNear(mouseRotationDegrees, targetMouseRotation)
-            && IsNear(mousePress, targetMousePress)
-            && IsNear(keyboardTarget, targetKeyboardTarget)
-            && IsNear(keyboardPress, targetKeyboardPress);
+            && IsNear(mousePress, targetMousePress);
 
-        return new DesktopPetRigPose(
+        var pose = new DesktopPetRigPose(
             mouseOffset,
             mouseRotationDegrees,
             mousePress,
             keyboardTarget,
             keyboardPress,
+            keyboardContact,
             isAtRest);
+        if (isAtRest)
+        {
+            keyboardTarget = NeutralKeyboardTarget;
+            keyboardPress = 0f;
+        }
+        return pose;
     }
 
     private static float DampingAlpha(TimeSpan elapsed)

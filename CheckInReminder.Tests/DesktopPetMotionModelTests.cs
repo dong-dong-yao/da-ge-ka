@@ -141,6 +141,23 @@ public sealed class DesktopPetMotionModelTests
     }
 
     [TestMethod]
+    public void ReleasedHistoricalKeyboardPress_RendersTheExactRaisedIdleArm()
+    {
+        var model = new DesktopPetMotionModel();
+        var area = new Rectangle(0, 0, 100, 100);
+        _ = model.Step(Snapshot(key: 0x47), area, OneFrame);
+        var released = model.Step(Snapshot(), area, OneFrame);
+
+        Assert.IsGreaterThan(0.01f, released.KeyboardPress,
+            "The analog press amount should still be decaying on the first release sample.");
+        using var renderer = WhiteBearRigRenderer.Load();
+        using var idle = renderer.Render(DesktopPetRigPose.Rest);
+        using var actual = renderer.Render(released);
+        Assert.AreEqual(0d, ExactPixelDifference(idle, actual),
+            "A decaying historical press amount must not select a pressed sprite after contact ends.");
+    }
+
+    [TestMethod]
     public void ZeroOrNegativeElapsed_DoesNotMoveState()
     {
         var model = new DesktopPetMotionModel();
@@ -164,4 +181,13 @@ public sealed class DesktopPetMotionModelTests
         bool right = false,
         int key = 0) =>
         new(cursor ?? new Point(50, 50), left, right, key, 1);
+
+    private static long ExactPixelDifference(Bitmap first, Bitmap second)
+    {
+        long difference = 0;
+        for (var y = 0; y < first.Height; y++)
+        for (var x = 0; x < first.Width; x++)
+            if (first.GetPixel(x, y).ToArgb() != second.GetPixel(x, y).ToArgb()) difference++;
+        return difference;
+    }
 }

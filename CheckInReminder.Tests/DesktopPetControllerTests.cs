@@ -1,5 +1,9 @@
 using CheckInReminder;
+using System.Drawing.Imaging;
 using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using Stopwatch = System.Diagnostics.Stopwatch;
 
 namespace CheckInReminder.Tests;
 
@@ -7,6 +11,8 @@ namespace CheckInReminder.Tests;
 [DoNotParallelize]
 public sealed class DesktopPetControllerTests
 {
+    public TestContext TestContext { get; set; } = null!;
+
     [TestMethod]
     public void TapStateMachine_AlternatesPawsAndReturnsToIdleOnSilence()
     {
@@ -230,6 +236,137 @@ public sealed class DesktopPetControllerTests
             PumpUntil(() => !IsRendering(controller), 1000);
             Assert.IsFalse(IsRendering(controller), "一次视觉反馈消费后必须能停表。");
             Assert.IsLessThan(0.5d, MeanPixelDifference(idle, sink.LastFrame!));
+        });
+    }
+
+    [TestMethod]
+    public void HeldKeyboardRelease_PresentsExactIdleAndStopsWithinFiftyMilliseconds()
+    {
+        RunOnStaThread(() =>
+        {
+            var sink = new FakeFrameSink();
+            var state = CenteredInput();
+            using var controller = new DesktopPetController(sink, state);
+            controller.SetCharacter(AnimationCatalog.Characters[0]);
+            var idleHash = RawPixelHash(sink.LastFrame!);
+            controller.Start();
+            PumpUntil(() => !IsRendering(controller), 1000);
+
+            state.UpdateKey(0x47, true);
+            controller.NotifyInputAvailable();
+            var pressFrame = sink.FrameCount;
+            PumpUntil(() => sink.FrameCount > pressFrame, 1000);
+            Assert.AreNotEqual(idleHash, RawPixelHash(sink.LastFrame!), "Held G must visibly contact the keyboard.");
+
+            var releaseFrame = sink.FrameCount;
+            var presentedExactIdle = false;
+            sink.FramePresented = frame => presentedExactIdle = RawPixelHash(frame) == idleHash;
+            var releaseClock = Stopwatch.StartNew();
+            state.UpdateKey(0x47, false);
+            controller.NotifyInputAvailable();
+            PumpUntil(() => presentedExactIdle && !IsRendering(controller), 1000);
+
+            var latency = releaseClock.Elapsed;
+            var releaseFrames = sink.FrameCount - releaseFrame;
+            TestContext.WriteLine($"Held release latency: {latency.TotalMilliseconds:F1} ms / {releaseFrames} presented frame(s).");
+            Assert.AreEqual(idleHash, RawPixelHash(sink.LastFrame!),
+                $"Release must restore the exact raw idle frame; observed {latency.TotalMilliseconds:F1} ms / {releaseFrames} frames.");
+            Assert.IsFalse(IsRendering(controller), "The keyboard-only release frame must stop the timer.");
+            Assert.IsLessThanOrEqualTo(50d, latency.TotalMilliseconds,
+                $"Held-key release took {latency.TotalMilliseconds:F1} ms / {releaseFrames} presented frames.");
+        });
+    }
+
+    [TestMethod]
+    public void KeyboardTapBeforeFirstTick_ShowsContactThenExactIdleWithinFiftyMilliseconds()
+    {
+        RunOnStaThread(() =>
+        {
+            var sink = new FakeFrameSink();
+            var state = CenteredInput();
+            using var controller = new DesktopPetController(sink, state);
+            controller.SetCharacter(AnimationCatalog.Characters[0]);
+            var idleHash = RawPixelHash(sink.LastFrame!);
+            controller.Start();
+            PumpUntil(() => !IsRendering(controller), 1000);
+
+            state.UpdateKey(0x41, true);
+            controller.NotifyInputAvailable();
+            state.UpdateKey(0x41, false);
+            controller.NotifyInputAvailable();
+
+            var beforeTapTick = sink.FrameCount;
+            Tick(controller);
+            Assert.AreEqual(beforeTapTick + 1, sink.FrameCount,
+                "The first UI tick after a complete tap must present exactly one contact frame.");
+            Assert.AreNotEqual(idleHash, RawPixelHash(sink.LastFrame!),
+                "A complete tap must present at least one contact frame.");
+
+            var releaseClock = Stopwatch.StartNew();
+            Tick(controller);
+            var latency = releaseClock.Elapsed;
+            TestContext.WriteLine($"Short-tap release latency: {latency.TotalMilliseconds:F1} ms / 1 explicit UI frame.");
+            Assert.AreEqual(beforeTapTick + 2, sink.FrameCount,
+                "The UI render immediately after contact must present the raised idle arm.");
+            Assert.AreEqual(idleHash, RawPixelHash(sink.LastFrame!));
+            Assert.IsLessThanOrEqualTo(50d, latency.TotalMilliseconds,
+                $"Short tap stayed in contact for {latency.TotalMilliseconds:F1} ms after its visible frame.");
+            Assert.IsFalse(IsRendering(controller), "The idle frame after a short tap must stop the timer.");
+        });
+    }
+
+    [TestMethod]
+    public void HeldKeyboard_RemainsInContactAcrossConsecutiveTimerFrames()
+    {
+        RunOnStaThread(() =>
+        {
+            var sink = new FakeFrameSink();
+            var state = CenteredInput();
+            using var controller = new DesktopPetController(sink, state);
+            controller.SetCharacter(AnimationCatalog.Characters[0]);
+            var idleHash = RawPixelHash(sink.LastFrame!);
+            controller.Start();
+            PumpUntil(() => !IsRendering(controller), 1000);
+
+            var frames = new List<bool>();
+            sink.FramePresented = frame => frames.Add(RawPixelHash(frame) == idleHash);
+            state.UpdateKey(0x50, true);
+            controller.NotifyInputAvailable();
+            PumpUntil(() => frames.Count >= 4, 1000);
+
+            Assert.IsGreaterThanOrEqualTo(4, frames.Count);
+            Assert.IsTrue(frames.Take(4).All(idle => !idle),
+                "A held key must not flicker to the raised idle arm between timer frames.");
+        });
+    }
+
+    [TestMethod]
+    public void HeldKeyboardRelease_NextExplicitUiTickIsExactIdleAndStopsTimer()
+    {
+        RunOnStaThread(() =>
+        {
+            var sink = new FakeFrameSink();
+            var state = CenteredInput();
+            using var controller = new DesktopPetController(sink, state);
+            controller.SetCharacter(AnimationCatalog.Characters[0]);
+            var idleHash = RawPixelHash(sink.LastFrame!);
+            controller.Start();
+            Tick(controller);
+
+            state.UpdateKey(0x47, true);
+            controller.NotifyInputAvailable();
+            Tick(controller);
+            Assert.AreNotEqual(idleHash, RawPixelHash(sink.LastFrame!));
+
+            state.UpdateKey(0x47, false);
+            controller.NotifyInputAvailable();
+            var beforeReleaseTick = sink.FrameCount;
+            Tick(controller);
+
+            Assert.AreEqual(beforeReleaseTick + 1, sink.FrameCount,
+                "Release must present the raised arm on the very next UI render.");
+            Assert.AreEqual(idleHash, RawPixelHash(sink.LastFrame!));
+            Assert.IsFalse(IsRendering(controller));
         });
     }
 
@@ -570,6 +707,7 @@ public sealed class DesktopPetControllerTests
         public int LastPresentationThread { get; private set; }
         public bool CheckedPreviousFrame { get; private set; }
         public bool RejectNextFrame { get; set; }
+        public Action<Bitmap>? FramePresented { get; set; }
 
         public void SetFrame(Bitmap frame)
         {
@@ -584,6 +722,7 @@ public sealed class DesktopPetControllerTests
                 CheckedPreviousFrame = true;
             }
             _ = frame.GetPixel(0, 0);
+            FramePresented?.Invoke(frame);
             LastFrame = frame;
             FrameCount++;
             LastPresentationThread = Environment.CurrentManagedThreadId;
@@ -671,6 +810,18 @@ public sealed class DesktopPetControllerTests
         }
 
         return difference / (samples * 4d);
+    }
+
+    private static string RawPixelHash(Bitmap frame)
+    {
+        var data = frame.LockBits(new Rectangle(Point.Empty, frame.Size), ImageLockMode.ReadOnly, PixelFormat.Format32bppPArgb);
+        try
+        {
+            var bytes = new byte[Math.Abs(data.Stride) * data.Height];
+            Marshal.Copy(data.Scan0, bytes, 0, bytes.Length);
+            return Convert.ToHexString(SHA256.HashData(bytes));
+        }
+        finally { frame.UnlockBits(data); }
     }
 
     private static void RunOnStaThread(Action action)

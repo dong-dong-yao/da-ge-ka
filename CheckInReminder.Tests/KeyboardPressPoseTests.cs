@@ -49,7 +49,8 @@ public sealed class KeyboardPressPoseTests
         foreach (var key in new[] { 0x51, 0x47, 0x50 }) // Q, G, P: independently chosen physical zones.
         {
             Assert.IsTrue(KeyboardTargetMapper.TryMap(key, out var target));
-            using var pressed = renderer.Render(DesktopPetRigPose.Rest with { KeyboardTarget = target, KeyboardPress = 1 });
+            using var pressed = renderer.Render(DesktopPetRigPose.Rest with
+                { KeyboardTarget = target, KeyboardPress = 1, KeyboardContact = true });
             var points = ChangedPoints(rest, pressed, new Rectangle(345, 312, 135, 70));
             Assert.IsGreaterThan(350, points.Count, "The provided paw must visibly cover keys below the old floating idle arm.");
             contacts.Add(new PointF((float)points.Average(p => p.X), (float)points.Average(p => p.Y)));
@@ -65,7 +66,8 @@ public sealed class KeyboardPressPoseTests
     public void Strike_DeformsTheLowerHandWhileTheShoulderRemainsPinned(float x)
     {
         using var renderer = WhiteBearRigRenderer.Load();
-        var pose = DesktopPetRigPose.Rest with { KeyboardTarget = new PointF(x, 0.5f), KeyboardPress = 0.2f };
+        var pose = DesktopPetRigPose.Rest with
+            { KeyboardTarget = new PointF(x, 0.5f), KeyboardPress = 0.2f, KeyboardContact = true };
         using var raised = renderer.Render(pose);
         using var struck = renderer.Render(pose with { KeyboardPress = 1 });
         using var rest = renderer.Render(DesktopPetRigPose.Rest);
@@ -92,8 +94,10 @@ public sealed class KeyboardPressPoseTests
     public void KeyRows_OnlyAdjustTheHandAndNeverTranslateTheShoulder()
     {
         using var renderer = WhiteBearRigRenderer.Load();
-        using var top = renderer.Render(DesktopPetRigPose.Rest with { KeyboardTarget = new PointF(0.5f, 0), KeyboardPress = 1 });
-        using var bottom = renderer.Render(DesktopPetRigPose.Rest with { KeyboardTarget = new PointF(0.5f, 1), KeyboardPress = 1 });
+        using var top = renderer.Render(DesktopPetRigPose.Rest with
+            { KeyboardTarget = new PointF(0.5f, 0), KeyboardPress = 1, KeyboardContact = true });
+        using var bottom = renderer.Render(DesktopPetRigPose.Rest with
+            { KeyboardTarget = new PointF(0.5f, 1), KeyboardPress = 1, KeyboardContact = true });
         AssertRegionEqual(top, bottom, new Rectangle(350, 235, 120, 68));
         var changes = ChangedPoints(top, bottom, new Rectangle(345, 235, 135, 150));
         Assert.IsGreaterThan(20, changes.Count);
@@ -107,7 +111,8 @@ public sealed class KeyboardPressPoseTests
         using var rest = renderer.Render(DesktopPetRigPose.Rest);
         foreach (var x in new[] { 0.1f, 0.5f, 0.9f })
         {
-            using var pressed = renderer.Render(DesktopPetRigPose.Rest with { KeyboardTarget = new PointF(x, 0.5f), KeyboardPress = 1 });
+            using var pressed = renderer.Render(DesktopPetRigPose.Rest with
+                { KeyboardTarget = new PointF(x, 0.5f), KeyboardPress = 1, KeyboardContact = true });
             var oldArm = new Rectangle(382, 180, 72, 96);
             var newArm = new Rectangle(350, 241, 120, 143);
             foreach (var point in ChangedPoints(rest, pressed, new Rectangle(0, 0, 600, 448)))
@@ -122,7 +127,8 @@ public sealed class KeyboardPressPoseTests
     {
         using var renderer = WhiteBearRigRenderer.Load();
         using var rest = renderer.Render(DesktopPetRigPose.Rest);
-        using var pressed = renderer.Render(DesktopPetRigPose.Rest with { KeyboardTarget = new PointF(0.5f, 0.5f), KeyboardPress = 1 });
+        using var pressed = renderer.Render(DesktopPetRigPose.Rest with
+            { KeyboardTarget = new PointF(0.5f, 0.5f), KeyboardPress = 1, KeyboardContact = true });
         // Source marks at (815,690) and (990,770), registered to the fixed shoulder.
         AssertRegionEqual(rest, pressed, new Rectangle(359, 267, 14, 22));
         AssertRegionEqual(rest, pressed, new Rectangle(438, 300, 10, 18));

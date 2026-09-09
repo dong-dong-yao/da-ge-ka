@@ -44,7 +44,7 @@ public sealed class WhiteBearRigRendererTests
         });
         using var keyboard = renderer.Render(DesktopPetRigPose.Rest with
         {
-            KeyboardTarget = new PointF(0.8f, 0.7f), KeyboardPress = 1
+            KeyboardTarget = new PointF(0.8f, 0.7f), KeyboardPress = 1, KeyboardContact = true
         });
 
         var mouseBounds = DifferenceBounds(idle, mouse);
@@ -65,7 +65,7 @@ public sealed class WhiteBearRigRendererTests
         using var active = renderer.Render(DesktopPetRigPose.Rest with
         {
             MouseOffset = new PointF(-1, 1), MouseRotationDegrees = 2.5f,
-            MousePress = 1, KeyboardTarget = new PointF(0.05f, 0.98f), KeyboardPress = 1
+            MousePress = 1, KeyboardTarget = new PointF(0.05f, 0.98f), KeyboardPress = 1, KeyboardContact = true
         });
 
         AssertRegionEqual(idle, active, new Rectangle(240, 150, 115, 68));
@@ -113,7 +113,7 @@ public sealed class WhiteBearRigRendererTests
         using var idle = renderer.Render(DesktopPetRigPose.Rest);
         using var moved = renderer.Render(DesktopPetRigPose.Rest with
         {
-            KeyboardTarget = new PointF(0.05f, 0.98f), KeyboardPress = 1
+            KeyboardTarget = new PointF(0.05f, 0.98f), KeyboardPress = 1, KeyboardContact = true
         });
         AssertRegionEqual(idle, moved, new Rectangle(457, 186, 12, 127));
     }
@@ -124,7 +124,7 @@ public sealed class WhiteBearRigRendererTests
         using var renderer = WhiteBearRigRenderer.Load();
         using var moved = renderer.Render(DesktopPetRigPose.Rest with
         {
-            KeyboardTarget = PointF.Empty, KeyboardPress = 1
+            KeyboardTarget = PointF.Empty, KeyboardPress = 1, KeyboardContact = true
         });
         Assert.IsGreaterThan(240, moved.GetPixel(430, 197).R,
             "The original right arm edge must not survive as a second ghost contour.");
@@ -288,12 +288,12 @@ public sealed class WhiteBearRigRendererTests
         using var boundary = renderer.Render(DesktopPetRigPose.Rest with
         {
             MouseOffset = new PointF(1, -1), MouseRotationDegrees = 2.5f, MousePress = 1,
-            KeyboardTarget = new PointF(0, 1), KeyboardPress = 1
+            KeyboardTarget = new PointF(0, 1), KeyboardPress = 1, KeyboardContact = true
         });
         using var outOfRange = renderer.Render(DesktopPetRigPose.Rest with
         {
             MouseOffset = new PointF(50, -50), MouseRotationDegrees = 90, MousePress = 50,
-            KeyboardTarget = new PointF(-50, 50), KeyboardPress = 50
+            KeyboardTarget = new PointF(-50, 50), KeyboardPress = 50, KeyboardContact = true
         });
 
         Assert.AreEqual(Rectangle.Empty, DifferenceBounds(boundary, outOfRange));
