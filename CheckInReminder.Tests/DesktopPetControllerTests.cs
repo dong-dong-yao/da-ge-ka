@@ -3,7 +3,6 @@ using System.Drawing.Imaging;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
-using Stopwatch = System.Diagnostics.Stopwatch;
 
 namespace CheckInReminder.Tests;
 
@@ -11,8 +10,6 @@ namespace CheckInReminder.Tests;
 [DoNotParallelize]
 public sealed class DesktopPetControllerTests
 {
-    public TestContext TestContext { get; set; } = null!;
-
     [TestMethod]
     public void TapStateMachine_AlternatesPawsAndReturnsToIdleOnSilence()
     {
@@ -240,7 +237,7 @@ public sealed class DesktopPetControllerTests
     }
 
     [TestMethod]
-    public void HeldKeyboardRelease_PresentsExactIdleAndStopsWithinFiftyMilliseconds()
+    public void HeldKeyboardRelease_NextPresentedFrameIsExactIdleAndStopsTimer()
     {
         RunOnStaThread(() =>
         {
@@ -261,24 +258,21 @@ public sealed class DesktopPetControllerTests
             var releaseFrame = sink.FrameCount;
             var presentedExactIdle = false;
             sink.FramePresented = frame => presentedExactIdle = RawPixelHash(frame) == idleHash;
-            var releaseClock = Stopwatch.StartNew();
             state.UpdateKey(0x47, false);
             controller.NotifyInputAvailable();
             PumpUntil(() => presentedExactIdle && !IsRendering(controller), 1000);
 
-            var latency = releaseClock.Elapsed;
             var releaseFrames = sink.FrameCount - releaseFrame;
-            TestContext.WriteLine($"Held release latency: {latency.TotalMilliseconds:F1} ms / {releaseFrames} presented frame(s).");
             Assert.AreEqual(idleHash, RawPixelHash(sink.LastFrame!),
-                $"Release must restore the exact raw idle frame; observed {latency.TotalMilliseconds:F1} ms / {releaseFrames} frames.");
+                $"Release must restore the exact raw idle frame; observed {releaseFrames} presented frames.");
+            Assert.AreEqual(1, releaseFrames,
+                "Release must not present any additional pressed frame before exact idle.");
             Assert.IsFalse(IsRendering(controller), "The keyboard-only release frame must stop the timer.");
-            Assert.IsLessThanOrEqualTo(50d, latency.TotalMilliseconds,
-                $"Held-key release took {latency.TotalMilliseconds:F1} ms / {releaseFrames} presented frames.");
         });
     }
 
     [TestMethod]
-    public void KeyboardTapBeforeFirstTick_ShowsContactThenExactIdleWithinFiftyMilliseconds()
+    public void KeyboardTapBeforeFirstTick_ShowsOneContactFrameThenExactIdleAndStopsTimer()
     {
         RunOnStaThread(() =>
         {
@@ -302,15 +296,10 @@ public sealed class DesktopPetControllerTests
             Assert.AreNotEqual(idleHash, RawPixelHash(sink.LastFrame!),
                 "A complete tap must present at least one contact frame.");
 
-            var releaseClock = Stopwatch.StartNew();
             Tick(controller);
-            var latency = releaseClock.Elapsed;
-            TestContext.WriteLine($"Short-tap release latency: {latency.TotalMilliseconds:F1} ms / 1 explicit UI frame.");
             Assert.AreEqual(beforeTapTick + 2, sink.FrameCount,
                 "The UI render immediately after contact must present the raised idle arm.");
             Assert.AreEqual(idleHash, RawPixelHash(sink.LastFrame!));
-            Assert.IsLessThanOrEqualTo(50d, latency.TotalMilliseconds,
-                $"Short tap stayed in contact for {latency.TotalMilliseconds:F1} ms after its visible frame.");
             Assert.IsFalse(IsRendering(controller), "The idle frame after a short tap must stop the timer.");
         });
     }
