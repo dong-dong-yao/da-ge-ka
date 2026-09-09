@@ -26,6 +26,10 @@ public sealed class DesktopPetController : IDisposable
     private PointF? pendingKeyboardPulse;
     private bool pendingLeftPulse;
     private bool pendingRightPulse;
+    // Deduplication watermarks intentionally survive pulse clearing and character reloads.
+    private long lastQueuedKeyboardPressSequence;
+    private long lastQueuedLeftButtonPressSequence;
+    private long lastQueuedRightButtonPressSequence;
     private DesktopPetMotionModel motion = new();
     private DesktopPetRigPose lastPose = DesktopPetRigPose.Rest;
     private WhiteBearRigRenderer? rigRenderer;
@@ -150,9 +154,21 @@ public sealed class DesktopPetController : IDisposable
         {
             if (disposed || staticFallback) return;
             // Never queue a snapshot or virtual key. Only normalized geometry and button bits survive.
-            if (hasKeyboardTarget) pendingKeyboardPulse = target;
-            pendingLeftPulse |= snapshot.LeftButtonDown;
-            pendingRightPulse |= snapshot.RightButtonDown;
+            if (snapshot.ActiveKeyPressSequence > lastQueuedKeyboardPressSequence)
+            {
+                lastQueuedKeyboardPressSequence = snapshot.ActiveKeyPressSequence;
+                if (hasKeyboardTarget) pendingKeyboardPulse = target;
+            }
+            if (snapshot.LeftButtonPressSequence > lastQueuedLeftButtonPressSequence)
+            {
+                lastQueuedLeftButtonPressSequence = snapshot.LeftButtonPressSequence;
+                pendingLeftPulse |= snapshot.LeftButtonDown;
+            }
+            if (snapshot.RightButtonPressSequence > lastQueuedRightButtonPressSequence)
+            {
+                lastQueuedRightButtonPressSequence = snapshot.RightButtonPressSequence;
+                pendingRightPulse |= snapshot.RightButtonDown;
+            }
         }
         if (Environment.CurrentManagedThreadId == ownerThreadId)
         {

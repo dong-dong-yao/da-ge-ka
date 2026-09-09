@@ -371,6 +371,135 @@ public sealed class DesktopPetControllerTests
     }
 
     [TestMethod]
+    public void RepeatKeyDownAfterPresentedHold_DoesNotReplayContactAfterRelease()
+    {
+        RunOnStaThread(() =>
+        {
+            var sink = new FakeFrameSink();
+            var state = CenteredInput();
+            using var controller = new DesktopPetController(sink, state);
+            controller.SetCharacter(AnimationCatalog.Characters[0]);
+            var idleHash = RawPixelHash(sink.LastFrame!);
+            controller.Start();
+            Tick(controller);
+
+            state.UpdateKey(0x47, true);
+            controller.NotifyInputAvailable();
+            Tick(controller);
+            Assert.AreNotEqual(idleHash, RawPixelHash(sink.LastFrame!));
+
+            state.UpdateKey(0x47, true); // Auto-repeat: not a new physical press.
+            controller.NotifyInputAvailable();
+            state.UpdateKey(0x47, false);
+            controller.NotifyInputAvailable();
+            Tick(controller);
+
+            Assert.AreEqual(idleHash, RawPixelHash(sink.LastFrame!),
+                "Key repeat must not queue a one-shot contact after the real key is released.");
+            Assert.IsFalse(IsRendering(controller));
+        });
+    }
+
+    [TestMethod]
+    public void ReleasingTwoPresentedKeysWithoutIntermediateTick_DoesNotFlashFallbackZone()
+    {
+        RunOnStaThread(() =>
+        {
+            var sink = new FakeFrameSink();
+            var state = CenteredInput();
+            using var controller = new DesktopPetController(sink, state);
+            controller.SetCharacter(AnimationCatalog.Characters[0]);
+            var idleHash = RawPixelHash(sink.LastFrame!);
+            controller.Start();
+            Tick(controller);
+
+            state.UpdateKey(0x41, true);
+            controller.NotifyInputAvailable();
+            Tick(controller);
+            state.UpdateKey(0x44, true);
+            controller.NotifyInputAvailable();
+            Tick(controller);
+
+            state.UpdateKey(0x44, false);
+            controller.NotifyInputAvailable(); // Snapshot falls back to the older held A.
+            state.UpdateKey(0x41, false);
+            controller.NotifyInputAvailable();
+            Tick(controller);
+
+            Assert.AreEqual(idleHash, RawPixelHash(sink.LastFrame!),
+                "Releasing D then A without a tick must not replay A's already-presented zone.");
+            Assert.IsFalse(IsRendering(controller));
+        });
+    }
+
+    [TestMethod]
+    public void MouseMoveAndRepeatDownDuringHold_DoNotReplayClickPulseAfterRelease()
+    {
+        RunOnStaThread(() =>
+        {
+            var sink = new FakeFrameSink();
+            var state = CenteredInput();
+            using var controller = new DesktopPetController(sink, state);
+            controller.SetCharacter(AnimationCatalog.Characters[0]);
+            controller.Start();
+            Tick(controller);
+
+            state.UpdateMouseButton(DesktopMouseButton.Left, true);
+            controller.NotifyInputAvailable();
+            Tick(controller);
+            var heldPress = LastPose(controller).MousePress;
+
+            var area = Screen.PrimaryScreen!.WorkingArea;
+            state.UpdatePointer(area.Left + area.Width / 2 + 1, area.Top + area.Height / 2);
+            controller.NotifyInputAvailable();
+            state.UpdateMouseButton(DesktopMouseButton.Left, true);
+            controller.NotifyInputAvailable();
+            state.UpdateMouseButton(DesktopMouseButton.Left, false);
+            controller.NotifyInputAvailable();
+            Tick(controller);
+            var releasedPress = LastPose(controller).MousePress;
+
+            Assert.IsLessThanOrEqualTo(heldPress + 0.001f, releasedPress,
+                $"Release must decay the existing mouse press instead of replaying a click pulse ({heldPress:F3} -> {releasedPress:F3}).");
+        });
+    }
+
+    [TestMethod]
+    public void NewShortTapQueuedDuringAnotherKeysRelease_StillGetsOneContactFrame()
+    {
+        RunOnStaThread(() =>
+        {
+            var sink = new FakeFrameSink();
+            var state = CenteredInput();
+            using var controller = new DesktopPetController(sink, state);
+            controller.SetCharacter(AnimationCatalog.Characters[0]);
+            var idleHash = RawPixelHash(sink.LastFrame!);
+            controller.Start();
+            Tick(controller);
+
+            state.UpdateKey(0x47, true);
+            controller.NotifyInputAvailable();
+            Tick(controller);
+            state.UpdateKey(0x47, false);
+            controller.NotifyInputAvailable();
+            state.UpdateKey(0x41, true);
+            controller.NotifyInputAvailable();
+            state.UpdateKey(0x41, false);
+            controller.NotifyInputAvailable();
+            Tick(controller);
+
+            var tapPose = LastPose(controller);
+            Assert.IsTrue(tapPose.KeyboardContact,
+                "A genuinely new tap during release must not be cleared with stale pulses.");
+            Assert.AreEqual(0.14f, tapPose.KeyboardTarget.X, 0.001f);
+            Assert.AreNotEqual(idleHash, RawPixelHash(sink.LastFrame!));
+            Tick(controller);
+            Assert.AreEqual(idleHash, RawPixelHash(sink.LastFrame!));
+            Assert.IsFalse(IsRendering(controller));
+        });
+    }
+
+    [TestMethod]
     [DataRow(DesktopMouseButton.Left)]
     [DataRow(DesktopMouseButton.Right)]
     public void MouseClickBeforeFirstTick_PresentsOneVisiblePressThenSettles(DesktopMouseButton button)
@@ -737,6 +866,10 @@ public sealed class DesktopPetControllerTests
 
     private static bool IsRendering(DesktopPetController controller) =>
         (bool)typeof(DesktopPetController).GetProperty("IsRendering", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(controller)!;
+
+    private static DesktopPetRigPose LastPose(DesktopPetController controller) =>
+        (DesktopPetRigPose)typeof(DesktopPetController).GetField("lastPose", BindingFlags.Instance | BindingFlags.NonPublic)!
             .GetValue(controller)!;
 
     private static DesktopInputState CenteredInput()

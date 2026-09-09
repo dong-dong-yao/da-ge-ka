@@ -14,7 +14,12 @@ public readonly record struct DesktopInputSnapshot(
     bool LeftButtonDown,
     bool RightButtonDown,
     int ActiveVirtualKey,
-    long Version);
+    long Version)
+{
+    public long ActiveKeyPressSequence { get; init; }
+    public long LeftButtonPressSequence { get; init; }
+    public long RightButtonPressSequence { get; init; }
+}
 
 /// <summary>
 /// Stores the transient, text-free input state consumed by the desktop pet.
@@ -28,10 +33,13 @@ public sealed class DesktopInputState
     private readonly int[] pressedKeys = new int[KeyCount];
     private readonly long[] pressOrders = new long[KeyCount];
     private readonly object keyUpdateGate = new();
+    private readonly object mouseUpdateGate = new();
     private long nextPressOrder;
     private int cursorX;
     private int cursorY;
     private int mouseButtons;
+    private long leftButtonPressSequence;
+    private long rightButtonPressSequence;
     private long version;
 
     public void UpdateKey(int virtualKey, bool pressed)
@@ -84,13 +92,17 @@ public sealed class DesktopInputState
             return;
         }
 
-        if (pressed)
+        lock (mouseUpdateGate)
         {
-            Interlocked.Or(ref mouseButtons, mask);
-        }
-        else
-        {
-            Interlocked.And(ref mouseButtons, ~mask);
+            var wasPressed = (mouseButtons & mask) != 0;
+            if (wasPressed == pressed) return;
+            if (pressed)
+            {
+                mouseButtons |= mask;
+                if (button == DesktopMouseButton.Left) leftButtonPressSequence++;
+                else rightButtonPressSequence++;
+            }
+            else mouseButtons &= ~mask;
         }
 
         Interlocked.Increment(ref version);
@@ -99,6 +111,7 @@ public sealed class DesktopInputState
     public DesktopInputSnapshot ReadSnapshot()
     {
         var activeKey = 0;
+        var activePressSequence = 0L;
         lock (keyUpdateGate)
         {
             var activeOrder = 0L;
@@ -116,14 +129,28 @@ public sealed class DesktopInputState
                     activeKey = key;
                 }
             }
+            activePressSequence = activeOrder;
         }
 
-        var buttons = Volatile.Read(ref mouseButtons);
+        int buttons;
+        long leftSequence;
+        long rightSequence;
+        lock (mouseUpdateGate)
+        {
+            buttons = mouseButtons;
+            leftSequence = leftButtonPressSequence;
+            rightSequence = rightButtonPressSequence;
+        }
         return new DesktopInputSnapshot(
             new Point(Volatile.Read(ref cursorX), Volatile.Read(ref cursorY)),
             (buttons & LeftButtonMask) != 0,
             (buttons & RightButtonMask) != 0,
             activeKey,
-            Volatile.Read(ref version));
+            Volatile.Read(ref version))
+        {
+            ActiveKeyPressSequence = activePressSequence,
+            LeftButtonPressSequence = leftSequence,
+            RightButtonPressSequence = rightSequence,
+        };
     }
 }
