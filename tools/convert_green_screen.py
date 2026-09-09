@@ -9,7 +9,7 @@ import tempfile
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageFilter
 
 
 def parse_args() -> argparse.Namespace:
@@ -41,6 +41,31 @@ def estimate_background(rgb: np.ndarray) -> np.ndarray:
     return np.median(source.astype(np.float32), axis=0)
 
 
+def green_screen_background(rgb: np.ndarray) -> np.ndarray:
+    """Return high-purity green-screen pixels without eating green artwork.
+
+    The red/green ratio is deliberately strict: the supplied dinosaur uses
+    yellow-green and olive, while the screen is a much purer chroma green.
+    This also removes screen pockets enclosed by the character and scooter.
+    """
+    rgb_float = rgb.astype(np.float32)
+    red = rgb_float[:, :, 0]
+    green = rgb_float[:, :, 1]
+    blue = rgb_float[:, :, 2]
+    candidate = (
+        (green >= 50.0)
+        & (green >= red * 1.65)
+        & (green >= blue * 1.35)
+        & ((green - np.maximum(red, blue)) >= 25.0)
+    )
+
+    # Close tiny MPEG compression holes. Character outlines are much wider
+    # than this 3px operation and remain a barrier.
+    mask = Image.fromarray((candidate * 255).astype(np.uint8), mode="L")
+    mask = mask.filter(ImageFilter.MaxFilter(3)).filter(ImageFilter.MinFilter(3))
+    return np.asarray(mask) > 0
+
+
 def keyed_rgba(path: Path) -> np.ndarray:
     rgb = np.asarray(Image.open(path).convert("RGB"), dtype=np.uint8)
     background = estimate_background(rgb)
@@ -55,11 +80,25 @@ def keyed_rgba(path: Path) -> np.ndarray:
         0,
         255,
     )
-    alpha = np.minimum(distance_alpha, excess_alpha).astype(np.uint8)
+    soft_alpha = np.minimum(distance_alpha, excess_alpha).astype(np.uint8)
+
+    background_mask = green_screen_background(rgb)
+    expanded_background = np.asarray(
+        Image.fromarray((background_mask * 255).astype(np.uint8), mode="L").filter(
+            ImageFilter.MaxFilter(5)
+        )
+    ) > 0
+    alpha = np.full(rgb.shape[:2], 255, dtype=np.uint8)
+    alpha[expanded_background] = soft_alpha[expanded_background]
+    alpha[background_mask] = 0
 
     despilled = rgb.copy()
     channel_limit = np.maximum(despilled[:, :, 0], despilled[:, :, 2]).astype(np.uint16) + 3
-    despilled[:, :, 1] = np.minimum(despilled[:, :, 1], channel_limit).astype(np.uint8)
+    despilled[:, :, 1] = np.where(
+        expanded_background,
+        np.minimum(despilled[:, :, 1], channel_limit),
+        despilled[:, :, 1],
+    ).astype(np.uint8)
     rgba = np.dstack([despilled, alpha])
     rgba[alpha == 0, :3] = 0
     return rgba

@@ -35,7 +35,7 @@ public sealed class UiThemeTests
     [TestMethod]
     public void CharacterCatalog_ProvidesStableDefaultCharacter()
     {
-        Assert.HasCount(1, AnimationCatalog.Characters);
+        Assert.HasCount(5, AnimationCatalog.Characters);
 
         var character = AnimationCatalog.FindCharacter(AnimationCatalog.DefaultCharacterId);
 

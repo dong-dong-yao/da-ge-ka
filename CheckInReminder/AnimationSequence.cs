@@ -17,7 +17,8 @@ internal sealed class AnimationSequence : IDisposable
     public static AnimationSequence Load(string sequenceName, TimeSpan duration, bool loop)
     {
         var assembly = Assembly.GetExecutingAssembly();
-        var prefix = $"CheckInReminder.Assets.Animations.{sequenceName}.frame_";
+        var resourceSequenceName = sequenceName.Replace('-', '_');
+        var prefix = $"CheckInReminder.Assets.Animations.{resourceSequenceName}.frame_";
         var resources = assembly.GetManifestResourceNames()
             .Where(name => name.StartsWith(prefix, StringComparison.Ordinal) &&
                 name.EndsWith(".png", StringComparison.OrdinalIgnoreCase))

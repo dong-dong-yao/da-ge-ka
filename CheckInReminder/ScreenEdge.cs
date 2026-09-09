@@ -1,6 +1,6 @@
 namespace CheckInReminder;
 
-internal enum ScreenEdge
+public enum ScreenEdge
 {
     Left,
     Top,

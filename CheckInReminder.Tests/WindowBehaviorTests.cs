@@ -333,14 +333,18 @@ public sealed class WindowBehaviorTests
             InvokeInstanceMethod(sideNav, "SelectPage", "characters");
             Application.DoEvents();
 
-            var placeholder = Descendants(form)
-                .Single(control => control.Visible && control.AccessibleName == "角色预览占位图");
-            AssertAspectRatio(placeholder, 16d / 9d);
+            var placeholders = Descendants(form)
+                .Where(control => control.Visible && control.AccessibleName == "角色预览占位图")
+                .ToArray();
+            Assert.HasCount(AnimationCatalog.Characters.Count, placeholders);
+            foreach (var placeholder in placeholders)
+                AssertAspectRatio(placeholder, 16d / 9d);
 
             form.Size = new Size(form.Width + 360, form.Height);
             Application.DoEvents();
 
-            AssertAspectRatio(placeholder, 16d / 9d);
+            foreach (var placeholder in placeholders)
+                AssertAspectRatio(placeholder, 16d / 9d);
         });
     }
 

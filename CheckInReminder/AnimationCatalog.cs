@@ -19,11 +19,22 @@ public static class AnimationCatalog
         ReminderCharacter[] declared =
         [
             new(DefaultCharacterId, "白熊", "Edge", EdgeDuration, EdgeLoops),
+            new("yellow-hippo", "黄色河马", "yellow-hippo", EdgeDuration, false),
+            new("blue-hat-cat", "蓝帽小猫", "blue-hat-cat", EdgeDuration, false),
+            new("stick-dog", "持棒小狗", "stick-dog", EdgeDuration, false)
+            {
+                AllowedEdges = Array.AsReadOnly(new[] { ScreenEdge.Left, ScreenEdge.Right }),
+            },
+            new("scooter-dinosaur", "滑板绿恐龙", "scooter-dinosaur", EdgeDuration, false)
+            {
+                AllowedEdges = Array.AsReadOnly(new[] { ScreenEdge.Left, ScreenEdge.Right }),
+            },
         ];
         return declared
             .Select(character => character with
             {
-                HasPetAssets = HasSequenceResources(character.PetIdleSequenceName),
+                HasPetAssets = HasDesktopPetResources(character.Id)
+                    || HasSequenceResources(character.PetIdleSequenceName),
             })
             .ToArray();
     }
@@ -31,12 +42,16 @@ public static class AnimationCatalog
     /// <summary>判断指定动画序列名的嵌入资源是否存在（至少一帧）。</summary>
     public static bool HasSequenceResources(string sequenceName)
     {
-        var prefix = $"CheckInReminder.Assets.Animations.{sequenceName}.frame_";
+        var resourceSequenceName = sequenceName.Replace('-', '_');
+        var prefix = $"CheckInReminder.Assets.Animations.{resourceSequenceName}.frame_";
         return Assembly.GetExecutingAssembly()
             .GetManifestResourceNames()
             .Any(name => name.StartsWith(prefix, StringComparison.Ordinal) &&
                 name.EndsWith(".png", StringComparison.OrdinalIgnoreCase));
     }
+
+    public static bool HasDesktopPetResources(string characterId) =>
+        DesktopPetSpriteSet.HasResources(characterId);
 
     public static ReminderCharacter? FindCharacter(string? id) =>
         Characters.FirstOrDefault(character =>

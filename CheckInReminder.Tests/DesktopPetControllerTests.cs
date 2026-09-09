@@ -11,6 +11,50 @@ namespace CheckInReminder.Tests;
 public sealed class DesktopPetControllerTests
 {
     [TestMethod]
+    [DataRow("yellow-hippo", 3)]
+    [DataRow("blue-hat-cat", 3)]
+    [DataRow("stick-dog", 2)]
+    [DataRow("scooter-dinosaur", 2)]
+    public void SpritePets_UseProvidedKeyboardZonesAndReleaseToExactIdle(string characterId, int expectedPoseCount)
+    {
+        RunOnStaThread(() =>
+        {
+            var sink = new FakeFrameSink();
+            var state = CenteredInput();
+            using var controller = new DesktopPetController(sink, state);
+            var character = AnimationCatalog.FindCharacter(characterId);
+            Assert.IsNotNull(character);
+
+            controller.SetCharacter(character);
+            using var idle = new Bitmap(sink.LastFrame!);
+            Assert.AreEqual(0, idle.GetPixel(0, 0).A, "桌宠外部背景必须透明");
+            controller.Start();
+
+            var pressedHashes = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var virtualKey in new[] { 0x51, 0x47, 0x50 }) // Q, G, P
+            {
+                state.UpdateKey(virtualKey, true);
+                controller.NotifyInputAvailable();
+                Tick(controller);
+                Assert.IsTrue(LastPose(controller).KeyboardContact);
+                Assert.IsGreaterThan(1d, MeanPixelDifference(idle, sink.LastFrame!),
+                    $"{characterId} 的按键 {virtualKey:X2} 必须切换到按下素材");
+                pressedHashes.Add(PixelHash(sink.LastFrame!));
+
+                state.UpdateKey(virtualKey, false);
+                controller.NotifyInputAvailable();
+                Tick(controller);
+                Assert.IsFalse(LastPose(controller).KeyboardContact);
+                Assert.IsLessThan(0.01d, MeanPixelDifference(idle, sink.LastFrame!),
+                    $"{characterId} 松手后的下一呈现帧必须恢复原始待机图");
+            }
+
+            Assert.HasCount(expectedPoseCount, pressedHashes,
+                $"{characterId} 应按现有素材暴露 {expectedPoseCount} 个不同键区姿势");
+        });
+    }
+
+    [TestMethod]
     public void TapStateMachine_AlternatesPawsAndReturnsToIdleOnSilence()
     {
         var machine = new PetTapStateMachine();
@@ -1026,6 +1070,13 @@ public sealed class DesktopPetControllerTests
     private static DesktopPetRigPose LastPose(DesktopPetController controller) =>
         (DesktopPetRigPose)typeof(DesktopPetController).GetField("lastPose", BindingFlags.Instance | BindingFlags.NonPublic)!
             .GetValue(controller)!;
+
+    private static string PixelHash(Bitmap bitmap)
+    {
+        using var stream = new MemoryStream();
+        bitmap.Save(stream, ImageFormat.Png);
+        return Convert.ToHexString(SHA256.HashData(stream.ToArray()));
+    }
 
     private static DesktopInputState CenteredInput()
     {

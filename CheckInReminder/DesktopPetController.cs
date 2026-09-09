@@ -33,6 +33,7 @@ public sealed class DesktopPetController : IDisposable
     private DesktopPetMotionModel motion = new();
     private DesktopPetRigPose lastPose = DesktopPetRigPose.Rest;
     private WhiteBearRigRenderer? rigRenderer;
+    private DesktopPetSpriteSet? spriteSet;
     private AnimationSequence? idleSequence;
     private AnimationSequence? tapSequence;
     private AnimationTimeline? idleTimeline;
@@ -86,6 +87,11 @@ public sealed class DesktopPetController : IDisposable
         if (string.Equals(character.Id, AnimationCatalog.DefaultCharacterId, StringComparison.Ordinal))
         {
             LoadWhiteBear();
+        }
+        else if (DesktopPetSpriteSet.TryLoad(character.Id, out spriteSet))
+        {
+            sink.SetFrame(spriteSet.Idle);
+            currentFrame = 0;
         }
         else if (character.HasPetAssets)
         {
@@ -253,6 +259,10 @@ public sealed class DesktopPetController : IDisposable
                 if (snapshot.Version != lastVersion || !lastPose.IsAtRest || !pose.IsAtRest)
                     PresentOwnedFrame(rigRenderer.Render(ToRenderPose(pose)));
             }
+            else if (spriteSet is not null)
+            {
+                PlaySpritePose(pose);
+            }
             else if (idleSequence is not null && tapSequence is not null)
             {
                 PlaySequence(snapshot.ActiveVirtualKey != 0 || pose.KeyboardPress > 0.002f || pose.MousePress > 0.002f);
@@ -305,6 +315,26 @@ public sealed class DesktopPetController : IDisposable
         currentFrame = frame;
     }
 
+    private void PlaySpritePose(DesktopPetRigPose pose)
+    {
+        var frameKey = 0;
+        Bitmap frame;
+        if (pose.KeyboardContact)
+        {
+            var keyboardPose = PetKeyboardPoseMapper.Map(pose.KeyboardTarget.X, spriteSet!.HasCenterPose);
+            frameKey = 1 + (int)keyboardPose;
+            frame = spriteSet.GetPressed(keyboardPose);
+        }
+        else
+        {
+            frame = spriteSet!.Idle;
+        }
+
+        if (currentFrame == frameKey) return;
+        sink.SetFrame(frame);
+        currentFrame = frameKey;
+    }
+
     private void PresentOwnedFrame(Bitmap next)
     {
         try
@@ -346,6 +376,8 @@ public sealed class DesktopPetController : IDisposable
         ownedFrame = null;
         rigRenderer?.Dispose();
         rigRenderer = null;
+        spriteSet?.Dispose();
+        spriteSet = null;
         idleSequence?.Dispose();
         tapSequence?.Dispose();
         idleSequence = null;
