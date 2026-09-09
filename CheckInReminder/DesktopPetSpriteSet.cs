@@ -13,6 +13,10 @@ internal sealed class DesktopPetSpriteSet : IDisposable
     private readonly Bitmap left;
     private readonly Bitmap? center;
     private readonly Bitmap right;
+    private readonly MouseLayers idleMouseLayers;
+    private readonly MouseLayers leftMouseLayers;
+    private readonly MouseLayers? centerMouseLayers;
+    private readonly MouseLayers rightMouseLayers;
     private bool disposed;
 
     private DesktopPetSpriteSet(Bitmap idle, Bitmap left, Bitmap? center, Bitmap right)
@@ -21,6 +25,21 @@ internal sealed class DesktopPetSpriteSet : IDisposable
         this.left = left;
         this.center = center;
         this.right = right;
+        try
+        {
+            idleMouseLayers = MouseLayers.Create(idle);
+            leftMouseLayers = MouseLayers.Create(left);
+            centerMouseLayers = center is null ? null : MouseLayers.Create(center);
+            rightMouseLayers = MouseLayers.Create(right);
+        }
+        catch
+        {
+            idleMouseLayers?.Dispose();
+            leftMouseLayers?.Dispose();
+            centerMouseLayers?.Dispose();
+            rightMouseLayers?.Dispose();
+            throw;
+        }
     }
 
     public bool HasCenterPose => center is not null;
@@ -37,10 +56,10 @@ internal sealed class DesktopPetSpriteSet : IDisposable
 
     public Bitmap Render(DesktopPetRigPose pose)
     {
-        var source = pose.KeyboardContact
-            ? GetPressed(PetKeyboardPoseMapper.Map(pose.KeyboardTarget.X, HasCenterPose))
-            : Idle;
-        return RenderMouseMotion(source, pose);
+        var keyboardPose = PetKeyboardPoseMapper.Map(pose.KeyboardTarget.X, HasCenterPose);
+        var source = pose.KeyboardContact ? GetPressed(keyboardPose) : Idle;
+        var mouseLayers = pose.KeyboardContact ? GetMouseLayers(keyboardPose) : idleMouseLayers;
+        return RenderMouseMotion(source, mouseLayers, pose);
     }
 
     public static bool HasResources(string characterId)
@@ -123,26 +142,31 @@ internal sealed class DesktopPetSpriteSet : IDisposable
         }
     }
 
-    private static Bitmap RenderMouseMotion(Bitmap source, DesktopPetRigPose pose)
+    private MouseLayers GetMouseLayers(PetKeyboardPose pose) => pose switch
     {
-        var result = source.Clone(
-            new Rectangle(Point.Empty, source.Size),
-            PixelFormat.Format32bppPArgb);
+        PetKeyboardPose.Left => leftMouseLayers,
+        PetKeyboardPose.Center when centerMouseLayers is not null => centerMouseLayers,
+        PetKeyboardPose.Center => rightMouseLayers,
+        _ => rightMouseLayers,
+    };
+
+    private static Bitmap RenderMouseMotion(Bitmap source, MouseLayers layers, DesktopPetRigPose pose)
+    {
         var dx = Math.Clamp(pose.MouseOffset.X, -1f, 1f) * 12f;
         var dy = Math.Clamp(pose.MouseOffset.Y, -1f, 1f) * 8f
             + Math.Clamp(pose.MousePress, 0f, 1f) * 5f;
         var angle = Math.Clamp(pose.MouseRotationDegrees, -2.5f, 2.5f);
         if (Math.Abs(dx) < 0.01f && Math.Abs(dy) < 0.01f && Math.Abs(angle) < 0.01f)
-            return result;
+            return source.Clone(new Rectangle(Point.Empty, source.Size), PixelFormat.Format32bppPArgb);
 
-        var region = new Rectangle(0, 128, 352, 320);
+        var result = layers.Background.Clone(
+            new Rectangle(Point.Empty, layers.Background.Size),
+            PixelFormat.Format32bppPArgb);
         using var graphics = Graphics.FromImage(result);
-        graphics.CompositingMode = CompositingMode.SourceCopy;
+        graphics.CompositingMode = CompositingMode.SourceOver;
         graphics.CompositingQuality = CompositingQuality.HighQuality;
         graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
         graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
-        using (var transparent = new SolidBrush(Color.Transparent))
-            graphics.FillRectangle(transparent, region);
 
         PointF Deform(PointF point)
         {
@@ -162,10 +186,7 @@ internal sealed class DesktopPetSpriteSet : IDisposable
             var crossX = (point.X - closestX) / 105f;
             var crossY = (point.Y - closestY) / 105f;
             var armWeight = along * MathF.Exp(-(crossX * crossX + crossY * crossY));
-            var edgeWeight = Math.Min(1f, Math.Min(
-                Math.Min((point.X - region.Left) / 32f, (region.Right - point.X) / 32f),
-                Math.Min((point.Y - region.Top) / 32f, (region.Bottom - point.Y) / 32f)));
-            var weight = Math.Clamp(armWeight * Math.Max(0f, edgeWeight), 0f, 1f);
+            var weight = Math.Clamp(armWeight, 0f, 1f);
 
             var radians = angle * Math.PI / 180d;
             var cosine = (float)Math.Cos(radians);
@@ -179,6 +200,7 @@ internal sealed class DesktopPetSpriteSet : IDisposable
                 point.Y + (movedY - point.Y) * weight);
         }
 
+        var region = new Rectangle(0, 128, 352, 320);
         const int cell = 32;
         for (var y = region.Top; y < region.Bottom; y += cell)
         for (var x = region.Left; x < region.Right; x += cell)
@@ -190,12 +212,12 @@ internal sealed class DesktopPetSpriteSet : IDisposable
             var topRight = Deform(new PointF(x + width, y));
             var bottomLeft = Deform(new PointF(x, y + height));
             var bottomRight = Deform(new PointF(x + width, y + height));
-            DrawTriangle(graphics, source, sourceCell,
+            DrawTriangle(graphics, layers.MouseArm, sourceCell,
                 [topLeft, topRight, bottomLeft], [topLeft, topRight, bottomLeft]);
             var opposite = new PointF(
                 topRight.X + bottomLeft.X - bottomRight.X,
                 topRight.Y + bottomLeft.Y - bottomRight.Y);
-            DrawTriangle(graphics, source, sourceCell,
+            DrawTriangle(graphics, layers.MouseArm, sourceCell,
                 [opposite, topRight, bottomLeft], [topRight, bottomRight, bottomLeft]);
         }
         return result;
@@ -288,6 +310,92 @@ internal sealed class DesktopPetSpriteSet : IDisposable
         }
     }
 
+    private sealed class MouseLayers : IDisposable
+    {
+        private MouseLayers(Bitmap background, Bitmap mouseArm)
+        {
+            Background = background;
+            MouseArm = mouseArm;
+        }
+
+        public Bitmap Background { get; }
+        public Bitmap MouseArm { get; }
+
+        public static MouseLayers Create(Bitmap source)
+        {
+            Bitmap? background = null;
+            Bitmap? mouseArm = null;
+            try
+            {
+                using var mask = CreateMouseMask();
+                background = source.Clone(new Rectangle(Point.Empty, source.Size), PixelFormat.Format32bppPArgb);
+                mouseArm = Extract(source, mask);
+                RepairMouseHole(background, source, mask);
+                return new MouseLayers(background, mouseArm);
+            }
+            catch
+            {
+                background?.Dispose();
+                mouseArm?.Dispose();
+                throw;
+            }
+        }
+
+        private static GraphicsPath CreateMouseMask() => Polygon(
+            (0.342f, 0.512f), (0.430f, 0.512f), (0.430f, 0.613f), (0.395f, 0.620f),
+            (0.372f, 0.637f), (0.348f, 0.659f), (0.326f, 0.680f), (0.328f, 0.698f),
+            (0.321f, 0.724f), (0.303f, 0.748f), (0.279f, 0.769f), (0.251f, 0.779f),
+            (0.225f, 0.779f), (0.207f, 0.767f), (0.198f, 0.750f), (0.195f, 0.730f),
+            (0.191f, 0.705f), (0.202f, 0.680f), (0.222f, 0.657f), (0.233f, 0.634f),
+            (0.246f, 0.609f), (0.267f, 0.585f), (0.295f, 0.550f));
+
+        private static Bitmap Extract(Bitmap source, GraphicsPath mask)
+        {
+            var result = new Bitmap(RenderWidth, RenderHeight, PixelFormat.Format32bppPArgb);
+            using var graphics = Graphics.FromImage(result);
+            graphics.CompositingMode = CompositingMode.SourceCopy;
+            graphics.Clear(Color.Transparent);
+            graphics.SetClip(mask);
+            graphics.DrawImageUnscaled(source, Point.Empty);
+            return result;
+        }
+
+        private static void RepairMouseHole(Bitmap background, Bitmap source, GraphicsPath mask)
+        {
+            using var graphics = Graphics.FromImage(background);
+            graphics.SetClip(mask);
+            graphics.CompositingMode = CompositingMode.SourceCopy;
+            using var transparent = new SolidBrush(Color.Transparent);
+            graphics.FillRectangle(transparent, new Rectangle(Point.Empty, background.Size));
+
+            using var pad = new SolidBrush(source.GetPixel(108, 336));
+            using var padRegion = Polygon((0.133f, 0.573f), (0.437f, 0.654f),
+                (0.444f, 0.674f), (0.295f, 0.861f), (0.270f, 0.870f),
+                (0f, 0.719f), (0f, 0.682f));
+            graphics.FillPath(pad, padRegion);
+
+            using var deskPen = new Pen(source.GetPixel(120, 253), 6f);
+            using var padPen = new Pen(source.GetPixel(160, 265), 3.5f);
+            graphics.DrawLine(deskPen, At(0f, 0.514f), At(1f, 0.773f));
+            graphics.DrawLine(padPen, At(0.133f, 0.573f), At(0.437f, 0.654f));
+        }
+
+        private static GraphicsPath Polygon(params (float X, float Y)[] points)
+        {
+            var path = new GraphicsPath();
+            path.AddPolygon(points.Select(point => At(point.X, point.Y)).ToArray());
+            return path;
+        }
+
+        private static PointF At(float x, float y) => new(x * RenderWidth, y * RenderHeight);
+
+        public void Dispose()
+        {
+            Background.Dispose();
+            MouseArm.Dispose();
+        }
+    }
+
     private Bitmap GetLive(Bitmap frame)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
@@ -298,6 +406,10 @@ internal sealed class DesktopPetSpriteSet : IDisposable
     {
         if (disposed) return;
         disposed = true;
+        idleMouseLayers.Dispose();
+        leftMouseLayers.Dispose();
+        centerMouseLayers?.Dispose();
+        rightMouseLayers.Dispose();
         idle.Dispose();
         left.Dispose();
         center?.Dispose();

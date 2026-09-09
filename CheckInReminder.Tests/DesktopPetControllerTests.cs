@@ -34,6 +34,9 @@ public sealed class DesktopPetControllerTests
             Assert.IsGreaterThan(0.5d,
                 MeanPixelDifference(idle, sink.LastFrame!, new Rectangle(0, 150, 330, 280)),
                 $"{characterId} 的鼠标手臂区域必须跟随指针产生可见移动");
+            Assert.IsLessThan(0.01d,
+                MeanPixelDifference(idle, sink.LastFrame!, new Rectangle(20, 330, 70, 50)),
+                $"{characterId} 的鼠标垫属于静态环境，不能跟随鼠标手臂移动");
             Assert.IsLessThan(0.05d,
                 MeanPixelDifference(idle, sink.LastFrame!, new Rectangle(360, 160, 220, 210)),
                 $"{characterId} 的鼠标移动不能带动键盘侧素材");
