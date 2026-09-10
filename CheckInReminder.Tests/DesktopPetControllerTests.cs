@@ -44,6 +44,44 @@ public sealed class DesktopPetControllerTests
     }
 
     [TestMethod]
+    [DataRow("yellow-hippo")]
+    [DataRow("blue-hat-cat")]
+    [DataRow("stick-dog")]
+    [DataRow("scooter-dinosaur")]
+    public void SpritePets_MouseMotionKeepsTheWholeArmConnectedAtTheShoulder(string characterId)
+    {
+        RunOnStaThread(() =>
+        {
+            var sink = new FakeFrameSink();
+            var state = CenteredInput();
+            using var controller = new DesktopPetController(sink, state);
+            controller.SetCharacter(AnimationCatalog.FindCharacter(characterId)!);
+            controller.Start();
+
+            var area = Screen.PrimaryScreen!.WorkingArea;
+            foreach (var pointer in new[]
+            {
+                new Point(area.Left, area.Top),
+                new Point(area.Right, area.Top),
+                new Point(area.Left, area.Bottom),
+                new Point(area.Right, area.Bottom),
+            })
+            {
+                state.UpdatePointer(pointer.X, pointer.Y);
+                controller.NotifyInputAvailable();
+                PumpEvents(120);
+
+                foreach (var point in new[]
+                {
+                    new Point(234, 258), new Point(240, 260),
+                })
+                    Assert.IsGreaterThanOrEqualTo(200, sink.LastFrame!.GetPixel(point.X, point.Y).A,
+                        $"{characterId} 的整条鼠标手臂必须保持连接，指针位于 {pointer} 时肩部不能在 {point} 裂开");
+            }
+        });
+    }
+
+    [TestMethod]
     [DataRow("yellow-hippo", 3)]
     [DataRow("blue-hat-cat", 3)]
     [DataRow("stick-dog", 2)]
