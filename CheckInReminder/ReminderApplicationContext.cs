@@ -62,7 +62,7 @@ internal sealed class ReminderApplicationContext : ApplicationContext
             Checked = settings.DesktopPetEnabled,
         };
         desktopPetItem.CheckedChanged += (_, _) => ToggleDesktopPetFromTray();
-        adjustPetPositionItem = new ToolStripMenuItem("调整宠物位置")
+        adjustPetPositionItem = new ToolStripMenuItem("允许鼠标拖动宠物（取消勾选可穿透）")
         {
             Padding = new Padding(16, 7, 24, 7),
             CheckOnClick = true,

@@ -107,13 +107,13 @@ public sealed class WindowBehaviorTests
             form.Show();
             Application.DoEvents();
 
-            var breakReminderToggle = Descendants(form)
-                .Single(control => control.AccessibleName == "启用久坐提醒");
+            var desktopPetToggle = Descendants(form)
+                .Single(control => control.AccessibleName == "桌面宠物");
             var autoStartToggle = Descendants(form)
                 .Single(control => control.AccessibleName == "开机自启动");
 
             Assert.AreEqual(
-                RightEdgeInForm(form, breakReminderToggle),
+                RightEdgeInForm(form, desktopPetToggle),
                 RightEdgeInForm(form, autoStartToggle),
                 "同一列中的开关应共享右侧对齐线，避免开机自启动按钮横向漂移。");
         });
@@ -187,6 +187,7 @@ public sealed class WindowBehaviorTests
         RunOnStaThread(() =>
         {
             using var form = CreateSettingsForm();
+            form.Size = form.MinimumSize;
             form.Show();
             Application.DoEvents();
 
@@ -320,7 +321,7 @@ public sealed class WindowBehaviorTests
     }
 
     [TestMethod]
-    public void SettingsWindow_CharacterPreviewPlaceholderKeepsSixteenByNineRatio()
+    public void SettingsWindow_CharacterPreviewsRemainLargeWhenResized()
     {
         RunOnStaThread(() =>
         {
@@ -333,18 +334,18 @@ public sealed class WindowBehaviorTests
             InvokeInstanceMethod(sideNav, "SelectPage", "characters");
             Application.DoEvents();
 
-            var placeholders = Descendants(form)
-                .Where(control => control.Visible && control.AccessibleName == "角色预览占位图")
+            var previews = Descendants(form).OfType<CharacterPreviewImage>()
+                .Where(control => control.Visible)
                 .ToArray();
-            Assert.HasCount(AnimationCatalog.Characters.Count, placeholders);
-            foreach (var placeholder in placeholders)
-                AssertAspectRatio(placeholder, 16d / 9d);
+            Assert.HasCount(AnimationCatalog.Characters.Count, previews);
+            foreach (var preview in previews)
+                AssertCharacterViewport(preview);
 
             form.Size = new Size(form.Width + 360, form.Height);
             Application.DoEvents();
 
-            foreach (var placeholder in placeholders)
-                AssertAspectRatio(placeholder, 16d / 9d);
+            foreach (var preview in previews)
+                AssertCharacterViewport(preview);
         });
     }
 
@@ -861,15 +862,14 @@ public sealed class WindowBehaviorTests
         return topLeft.X + control.Width;
     }
 
-    private static void AssertAspectRatio(Control control, double expected)
+    private static void AssertCharacterViewport(CharacterPreviewImage control)
     {
-        Assert.IsGreaterThan(0, control.Height);
-        var actual = control.Width / (double)control.Height;
-        Assert.AreEqual(
-            expected,
-            actual,
-            0.03,
-            $"角色预览占位图应保持固定比例；当前尺寸为 {control.Width}x{control.Height}。");
+        Assert.IsGreaterThanOrEqualTo(130, control.Height);
+        Assert.IsGreaterThanOrEqualTo(140, control.Width);
+        Assert.IsNotNull(control.Image);
+        Assert.IsGreaterThan(0, control.SourceBounds.Width);
+        Assert.IsGreaterThan(0, control.SourceBounds.Height);
+        Assert.IsTrue(new Rectangle(Point.Empty, control.Image.Size).Contains(control.SourceBounds));
     }
 
     private static bool WaitForImageChange(PictureBox pictureBox, Image? original, int timeoutMilliseconds)

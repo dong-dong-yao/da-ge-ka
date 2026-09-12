@@ -32,9 +32,10 @@ internal sealed class IconBadge : Control
         TabStop = false;
     }
 
-    protected override void OnPaint(PaintEventArgs e)
+    protected override void OnPaint(PaintEventArgs e) => RenderBadge(e.Graphics);
+
+    internal void RenderBadge(Graphics g)
     {
-        var g = e.Graphics;
         g.SmoothingMode = SmoothingMode.AntiAlias;
 
         var bounds = new Rectangle(1, 1, Width - 3, Height - 3);

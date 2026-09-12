@@ -17,6 +17,9 @@ internal sealed class RoundedPanel : Panel
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public bool ShowOutline { get; set; } = true;
 
+    [DefaultValue(true)]
+    public bool ShowShadow { get; set; } = true;
+
     public RoundedPanel()
     {
         DoubleBuffered = true;
@@ -32,9 +35,11 @@ internal sealed class RoundedPanel : Panel
         var shadowBounds = new Rectangle(5, 6, Math.Max(1, Width - 11), Math.Max(1, Height - 11));
         using var shadowPath = CreateRoundedPath(shadowBounds, CornerRadius);
         using var shadowBrush = new SolidBrush(UiTheme.ShadowColor);
-        e.Graphics.FillPath(shadowBrush, shadowPath);
+        if (ShowShadow) e.Graphics.FillPath(shadowBrush, shadowPath);
 
-        var cardBounds = new Rectangle(2, 1, Math.Max(1, Width - 10), Math.Max(1, Height - 9));
+        var cardBounds = ShowShadow
+            ? new Rectangle(2, 1, Math.Max(1, Width - 10), Math.Max(1, Height - 9))
+            : new Rectangle(1, 1, Math.Max(1, Width - 3), Math.Max(1, Height - 3));
         using var cardPath = CreateRoundedPath(cardBounds, CornerRadius);
         using var fillBrush = new SolidBrush(SurfaceColor);
         e.Graphics.FillPath(fillBrush, cardPath);

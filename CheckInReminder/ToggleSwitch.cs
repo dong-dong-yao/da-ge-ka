@@ -28,7 +28,13 @@ internal sealed class ToggleSwitch : Control
 
             isChecked = value;
             AccessibleDefaultActionDescription = value ? "关闭" : "开启";
-            slideAnimation.Start(position, value ? 1f : 0f, 220);
+            if (!IsHandleCreated || !Visible)
+            {
+                slideAnimation.Stop();
+                position = value ? 1f : 0f;
+                Invalidate();
+            }
+            else slideAnimation.Start(position, value ? 1f : 0f, 220);
             CheckedChanged?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -45,7 +51,9 @@ internal sealed class ToggleSwitch : Control
             ControlStyles.AllPaintingInWmPaint |
             ControlStyles.OptimizedDoubleBuffer |
             ControlStyles.ResizeRedraw |
+            ControlStyles.SupportsTransparentBackColor |
             ControlStyles.Selectable, true);
+        BackColor = Color.Transparent;
 
         slideAnimation = new AnimationHelper(v =>
         {

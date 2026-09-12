@@ -19,7 +19,7 @@ internal sealed class DesktopPetSpriteSet : IDisposable
     private readonly MouseLayers rightMouseLayers;
     private bool disposed;
 
-    private DesktopPetSpriteSet(string characterId, Bitmap idle, Bitmap left, Bitmap? center, Bitmap right)
+    private DesktopPetSpriteSet(Bitmap idle, Bitmap left, Bitmap? center, Bitmap right)
     {
         this.idle = idle;
         this.left = left;
@@ -27,10 +27,14 @@ internal sealed class DesktopPetSpriteSet : IDisposable
         this.right = right;
         try
         {
-            idleMouseLayers = MouseLayers.Create(idle, characterId);
-            leftMouseLayers = MouseLayers.Create(left, characterId);
-            centerMouseLayers = center is null ? null : MouseLayers.Create(center, characterId);
-            rightMouseLayers = MouseLayers.Create(right, characterId);
+            idleMouseLayers = MouseLayers.Create(idle);
+            leftMouseLayers = MouseLayers.Create(left);
+            centerMouseLayers = center is null ? null : MouseLayers.Create(center);
+            rightMouseLayers = MouseLayers.Create(right);
+            NormalizeRestFrame(idle, idleMouseLayers);
+            NormalizeRestFrame(left, leftMouseLayers);
+            if (center is not null) NormalizeRestFrame(center, centerMouseLayers!);
+            NormalizeRestFrame(right, rightMouseLayers);
         }
         catch
         {
@@ -56,10 +60,10 @@ internal sealed class DesktopPetSpriteSet : IDisposable
 
     public Bitmap Render(DesktopPetRigPose pose)
     {
+        ObjectDisposedException.ThrowIf(disposed, this);
         var keyboardPose = PetKeyboardPoseMapper.Map(pose.KeyboardTarget.X, HasCenterPose);
-        var source = pose.KeyboardContact ? GetPressed(keyboardPose) : Idle;
         var mouseLayers = pose.KeyboardContact ? GetMouseLayers(keyboardPose) : idleMouseLayers;
-        return RenderMouseMotion(source, mouseLayers, pose);
+        return RenderMouseMotion(mouseLayers, pose);
     }
 
     public static bool HasResources(string characterId)
@@ -93,7 +97,7 @@ internal sealed class DesktopPetSpriteSet : IDisposable
             var centerName = Find(names, prefix, "press-center");
             if (centerName is not null) center = Load(assembly, centerName);
             right = Load(assembly, Find(names, prefix, "press-right")!);
-            result = new DesktopPetSpriteSet(characterId, idle, left, center, right);
+            result = new DesktopPetSpriteSet(idle, left, center, right);
             return true;
         }
         catch
@@ -150,58 +154,35 @@ internal sealed class DesktopPetSpriteSet : IDisposable
         _ => rightMouseLayers,
     };
 
-    private static Bitmap RenderMouseMotion(Bitmap source, MouseLayers layers, DesktopPetRigPose pose)
+    private static Bitmap RenderMouseMotion(MouseLayers layers, DesktopPetRigPose pose)
     {
         var dx = Math.Clamp(pose.MouseOffset.X, -1f, 1f) * 6f;
         var dy = Math.Clamp(pose.MouseOffset.Y, -1f, 1f) * 4f
             + Math.Clamp(pose.MousePress, 0f, 1f) * 3f;
         var angle = Math.Clamp(pose.MouseRotationDegrees, -1f, 1f);
-        if (Math.Abs(dx) < 0.01f && Math.Abs(dy) < 0.01f && Math.Abs(angle) < 0.01f)
-            return source.Clone(new Rectangle(Point.Empty, source.Size), PixelFormat.Format32bppPArgb);
-
         var result = layers.Background.Clone(
-            new Rectangle(Point.Empty, layers.Background.Size),
-            PixelFormat.Format32bppPArgb);
+            new Rectangle(Point.Empty, layers.Background.Size), PixelFormat.Format32bppPArgb);
         using var graphics = Graphics.FromImage(result);
         graphics.CompositingMode = CompositingMode.SourceOver;
         graphics.CompositingQuality = CompositingQuality.HighQuality;
         graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
         graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
-
-        PointF TransformArm(PointF point)
-        {
-            const float shoulderX = 270f;
-            const float shoulderY = 205f;
-            const float pawX = 145f;
-            const float pawY = 330f;
-            var armX = pawX - shoulderX;
-            var armY = pawY - shoulderY;
-            var along = ((point.X - shoulderX) * armX + (point.Y - shoulderY) * armY)
-                / ((armX * armX) + (armY * armY));
-
-            var radians = angle * Math.PI / 180d;
-            var cosine = (float)Math.Cos(radians);
-            var sine = (float)Math.Sin(radians);
-            var localX = point.X - shoulderX;
-            var localY = point.Y - shoulderY;
-            return new PointF(
-                shoulderX + localX * cosine - localY * sine + (dx * along),
-                shoulderY + localX * sine + localY * cosine + (dy * along));
-        }
-
-        // One affine draw keeps the supplied arm pixels in a single continuous
-        // surface. A tiled mesh can expose cell edges and visually split the arm.
-        var destination = new[]
-        {
-            TransformArm(PointF.Empty),
-            TransformArm(new PointF(RenderWidth, 0f)),
-            TransformArm(new PointF(0f, RenderHeight)),
-        };
-        using var attributes = new ImageAttributes();
-        attributes.SetWrapMode(WrapMode.TileFlipXY);
-        graphics.DrawImage(layers.MouseArm, destination,
-            new Rectangle(0, 0, RenderWidth, RenderHeight), GraphicsUnit.Pixel, attributes);
+        // Even an unscaled transparent SourceOver draw can round destination
+        // alpha at unrelated edges. Limit both rest and motion to this rig's
+        // complete swept bounds, leaving the desk/keyboard byte-for-byte intact.
+        graphics.SetClip(new Rectangle(96, 184, 188, 184));
+        WhiteBearRigRenderer.DrawPinnedMouseArm(graphics, layers.MouseArm, dx, dy, angle,
+            new PointF(205, 216), new PointF(240, 260), new PointF(205, 216),
+            new Rectangle(96, 192, 176, 160));
         return result;
+    }
+
+    private static void NormalizeRestFrame(Bitmap frame, MouseLayers layers)
+    {
+        using var composed = RenderMouseMotion(layers, DesktopPetRigPose.Rest);
+        using var graphics = Graphics.FromImage(frame);
+        graphics.CompositingMode = CompositingMode.SourceCopy;
+        graphics.DrawImageUnscaled(composed, Point.Empty);
     }
 
     private static void RemoveConnectedWhiteBackground(Bitmap bitmap)
@@ -271,20 +252,19 @@ internal sealed class DesktopPetSpriteSet : IDisposable
         public Bitmap Background { get; }
         public Bitmap MouseArm { get; }
 
-        public static MouseLayers Create(Bitmap source, string characterId)
+        public static MouseLayers Create(Bitmap source)
         {
             Bitmap? background = null;
             Bitmap? mouseArm = null;
             try
             {
-                using var mask = CreateMouseArmMask();
+                using var mask = CreateMouseArmMask(source);
+                var deskEdge = DeskEdge.Find(source);
                 background = source.Clone(new Rectangle(Point.Empty, source.Size), PixelFormat.Format32bppPArgb);
                 mouseArm = Extract(source, mask);
-                using var repairMask = CreateRepairMask(mask);
-                // Flat-color characters tolerate a slightly wider color bed;
-                // the hippo's shaded 3D arm would show that wider bed as a patch.
-                RepairMouseHole(background, source, mask, repairMask,
-                    extendArmBed: characterId != "yellow-hippo");
+                RepairMouseHole(background, source, mask, deskEdge);
+                if (deskEdge is not null)
+                    SeparateDeskEdge(source, background, mouseArm, deskEdge);
                 return new MouseLayers(background, mouseArm);
             }
             catch
@@ -295,106 +275,185 @@ internal sealed class DesktopPetSpriteSet : IDisposable
             }
         }
 
-        private static GraphicsPath CreateMouseArmMask()
+        private static GraphicsPath CreateMouseArmMask(Bitmap source)
         {
-            // These four supplied characters share the same desk template but
-            // not the white bear's much narrower forearm. Extract the complete
-            // forearm as one piece; the mouse and pad stay in the static layer.
-            var path = new GraphicsPath();
-            path.AddPolygon(
-            [
-                new PointF(280, 215), new PointF(250, 214), new PointF(224, 219),
-                new PointF(202, 227), new PointF(183, 237), new PointF(166, 248),
-                new PointF(154, 262), new PointF(146, 272), new PointF(142, 281),
-                new PointF(144, 289), new PointF(150, 296), new PointF(158, 300),
-                new PointF(168, 299), new PointF(178, 294), new PointF(186, 289),
-                new PointF(190, 289), new PointF(200, 284), new PointF(210, 274),
-                new PointF(220, 265), new PointF(230, 257), new PointF(238, 255),
-                new PointF(248, 258), new PointF(258, 264), new PointF(270, 265),
-                new PointF(280, 258), new PointF(287, 245), new PointF(290, 225),
-            ]);
+            // Calibrate to each supplied pose's actual skin/mouse silhouette,
+            // rather than copying another character's arm coordinates. The desk
+            // is gray, whereas the paw/mouse is white or chromatic.
+            var spans = new List<Rectangle>();
+            var coverage = new bool[RenderWidth * RenderHeight];
+            using var envelope = new GraphicsPath();
+            envelope.AddPolygon([
+                new PointF(200, 205), new PointF(268, 265), new PointF(235, 270),
+                new PointF(205, 289), new PointF(198, 313), new PointF(182, 335),
+                new PointF(137, 340), new PointF(110, 327), new PointF(107, 304),
+                new PointF(120, 280), new PointF(133, 265), new PointF(150, 243),
+                new PointF(175, 221)]);
+            for (var y = 196; y < 342; y++)
+            {
+                var first = 272;
+                var last = -1;
+                for (var x = 108; x < 268; x++)
+                {
+                    if (!envelope.IsVisible(x, y)) continue;
+                    var color = source.GetPixel(x, y);
+                    var high = Math.Max(color.R, Math.Max(color.G, color.B));
+                    var low = Math.Min(color.R, Math.Min(color.G, color.B));
+                    if (color.A < 180 || !(low > 215 || high - low > 30)) continue;
+                    first = Math.Min(first, x);
+                    last = x;
+                }
+                if (last < first) continue;
+                // Include the original dark outline and its antialiased fringe.
+                for (var yy = Math.Max(192, y - 8); yy <= Math.Min(347, y + 8); yy++)
+                for (var xx = Math.Max(104, first - 8); xx <= Math.Min(271, last + 8); xx++)
+                    coverage[yy * RenderWidth + xx] = true;
+            }
+            for (var y = 192; y < 348; y++)
+            {
+                var first = 272;
+                var last = -1;
+                for (var x = 104; x < 272; x++)
+                    if (coverage[y * RenderWidth + x]) { first = Math.Min(first, x); last = x; }
+                if (last >= first) spans.Add(new Rectangle(first, y, last - first + 1, 1));
+            }
+            var path = new GraphicsPath(FillMode.Winding);
+            path.AddRectangles(spans.ToArray());
+            // The mouse outline is much thicker than the skin antialiasing.
+            // Include the whole original rim (also the part below the paw).
+            path.AddEllipse(108, 271, 96, 74);
             return path;
-        }
-
-        private static GraphicsPath CreateRepairMask(GraphicsPath armMask)
-        {
-            var result = (GraphicsPath)armMask.Clone();
-            result.FillMode = FillMode.Winding;
-            result.AddPolygon(
-            [
-                new PointF(232, 215), new PointF(205, 222), new PointF(180, 233),
-                new PointF(155, 248), new PointF(136, 263), new PointF(131, 276),
-                new PointF(143, 279), new PointF(149, 267), new PointF(166, 253),
-                new PointF(184, 242), new PointF(207, 232), new PointF(234, 224),
-            ]);
-            return result;
         }
 
         private static Bitmap Extract(Bitmap source, GraphicsPath mask)
         {
             var result = new Bitmap(RenderWidth, RenderHeight, PixelFormat.Format32bppPArgb);
-            using var graphics = Graphics.FromImage(result);
-            graphics.CompositingMode = CompositingMode.SourceCopy;
-            graphics.Clear(Color.Transparent);
-            graphics.SetClip(mask);
-            graphics.DrawImageUnscaled(source, Point.Empty);
+            using (var graphics = Graphics.FromImage(result))
+            {
+                graphics.CompositingMode = CompositingMode.SourceCopy;
+                graphics.Clear(Color.Transparent);
+                graphics.SetClip(mask);
+                graphics.DrawImageUnscaled(source, Point.Empty);
+            }
+            // A generous contour mask prevents leftover black outlines, but its
+            // safety margin also contains gray pad pixels. Those belong only to
+            // the static layer; retain the original skin, mouse and dark rim.
+            var pad = source.GetPixel(108, 336).R;
+            for (var y = 192; y < 348; y++)
+            for (var x = 104; x < 272; x++)
+            {
+                var color = result.GetPixel(x, y);
+                if (color.A == 0) continue;
+                var high = Math.Max(color.R, Math.Max(color.G, color.B));
+                var low = Math.Min(color.R, Math.Min(color.G, color.B));
+                if (high - low > 15 || low < 85 || high > 215) continue;
+                if (Math.Abs(color.R - pad) < 20)
+                    result.SetPixel(x, y, Color.Transparent);
+                else
+                {
+                    var shade = color.R < pad ? 0 : 255;
+                    var opacity = Math.Clamp(Math.Abs(color.R - pad) / (float)Math.Abs(shade - pad), 0, 1);
+                    result.SetPixel(x, y, Color.FromArgb((int)(color.A * opacity), shade, shade, shade));
+                }
+            }
             return result;
         }
 
-        private static void RepairMouseHole(
-            Bitmap background,
-            Bitmap source,
-            GraphicsPath armMask,
-            GraphicsPath repairMask,
-            bool extendArmBed)
+        private static void RepairMouseHole(Bitmap background, Bitmap source, GraphicsPath mask, DeskEdge? deskEdge)
         {
             using var graphics = Graphics.FromImage(background);
-            graphics.SetClip(repairMask);
+            graphics.SetClip(mask);
             graphics.CompositingMode = CompositingMode.SourceCopy;
+            // Keep every pinned shoulder pixel in the static source as well;
+            // rasterizing a cut twice must not expose a one-pixel seam.
+            using var movingHalfPlane = new GraphicsPath();
+            movingHalfPlane.AddPolygon([new PointF(205, 216), new PointF(240, 260),
+                new PointF(390, 448), new PointF(0, 448), new PointF(0, 0), new PointF(33, 0)]);
+            graphics.SetClip(movingHalfPlane, CombineMode.Intersect);
             using var transparent = new SolidBrush(Color.Transparent);
-            graphics.FillRectangle(transparent, new Rectangle(Point.Empty, background.Size));
-
+            graphics.FillRectangle(transparent, new Rectangle(Point.Empty, source.Size));
+            // Only the desk/pad is underneath the extracted limb. Never paint
+            // skin or a second mouse here: that would remain behind during motion.
             using var pad = new SolidBrush(source.GetPixel(108, 336));
-            using var padRegion = Polygon((0.133f, 0.573f), (0.437f, 0.654f),
-                (0.444f, 0.674f), (0.295f, 0.861f), (0.270f, 0.870f),
-                (0f, 0.719f), (0f, 0.682f));
+            using var padRegion = new GraphicsPath();
+            padRegion.AddPolygon(
+            [
+                new PointF(0, 220), new PointF(145, 249), new PointF(265, 274),
+                new PointF(265, 300), new PointF(170, 375), new PointF(0, 325),
+            ]);
             graphics.FillPath(pad, padRegion);
-
-            // Preserve a borderless color bed below the original limb. It fills
-            // pixels that do not exist in the single supplied composite image,
-            // while the transformed source arm still supplies the real contour.
-            graphics.ResetClip();
-            using var armBed = new LinearGradientBrush(
-                new PointF(180f, 270f), new PointF(220f, 240f),
-                source.GetPixel(180, 270), source.GetPixel(220, 240));
-            graphics.FillPath(armBed, extendArmBed ? repairMask : armMask);
-
-            // The supplied still image contains no pixels for the part of the
-            // mouse hidden below the paw. Rebuild the complete stationary mouse
-            // before placing the moving arm over it, avoiding clipped fragments.
-            graphics.ResetClip();
-            graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            using var mouseFill = new SolidBrush(Color.FromArgb(255, 248, 248, 248));
-            using var mouseOutline = new Pen(Color.FromArgb(255, 20, 20, 20), 5f);
-            var mouseBounds = new RectangleF(116f, 277f, 80f, 61f);
-            graphics.FillEllipse(mouseFill, mouseBounds);
-            graphics.DrawEllipse(mouseOutline, mouseBounds);
-            using var mouseWheel = new Pen(Color.FromArgb(255, 20, 20, 20), 4f)
+            if (deskEdge is not null)
             {
-                StartCap = LineCap.Round,
-                EndCap = LineCap.Round,
-            };
-            graphics.DrawLine(mouseWheel, new PointF(153f, 301f), new PointF(148f, 319f));
+                // Continue the stationary desk behind the original occluding
+                // arm. The existing clip limits this to the repaired hole.
+                graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                using var pen = new Pen(deskEdge.Color, deskEdge.Width);
+                graphics.DrawLine(pen, 0, deskEdge.Y(0), RenderWidth, deskEdge.Y(RenderWidth));
+            }
         }
 
-        private static GraphicsPath Polygon(params (float X, float Y)[] points)
+        private static void SeparateDeskEdge(Bitmap source, Bitmap background, Bitmap arm, DeskEdge desk)
         {
-            var path = new GraphicsPath();
-            path.AddPolygon(points.Select(point => At(point.X, point.Y)).ToArray());
-            return path;
+            bool IsSkin(int x, int y)
+            {
+                var c = source.GetPixel(x, y);
+                var hi = Math.Max(c.R, Math.Max(c.G, c.B));
+                var lo = Math.Min(c.R, Math.Min(c.G, c.B));
+                return c.A >= 240 && (lo > 235 || hi - lo > 30);
+            }
+
+            for (var x = 104; x < 272; x++)
+            {
+                var center = desk.Y(x);
+                var radius = (int)Math.Ceiling(desk.Width / 2 + 2);
+                for (var y = (int)Math.Floor(center) - radius; y <= (int)Math.Ceiling(center) + radius; y++)
+                {
+                    // Keep the arm's actual contour at its intersection with
+                    // the desk, including the original black outline. Pixels
+                    // away from skin belong to the stationary desk, not the rig.
+                    var nearSkin = false;
+                    for (var dy = -4; dy <= 4 && !nearSkin; dy++)
+                    for (var dx = -4; dx <= 4 && !nearSkin; dx++)
+                        if (dx * dx + dy * dy <= 16 && IsSkin(x + dx, y + dy)) nearSkin = true;
+                    if (nearSkin) continue;
+                    arm.SetPixel(x, y, Color.Transparent);
+                    background.SetPixel(x, y, source.GetPixel(x, y));
+                }
+            }
         }
 
-        private static PointF At(float x, float y) => new(x * RenderWidth, y * RenderHeight);
+        private sealed record DeskEdge(float Slope, float Intercept, float Width, Color Color)
+        {
+            public float Y(float x) => Intercept + Slope * x;
+
+            public static DeskEdge? Find(Bitmap source)
+            {
+                // Fit the unoccluded left segment separately for every supplied
+                // pose. The PNG and JPEG variants do not share exact placement.
+                var samples = new List<(double X, double Y, int Thickness)>();
+                var ink = Color.Black;
+                var darkest = 256;
+                for (var x = 8; x <= 96; x += 2)
+                {
+                    var rows = new List<int>();
+                    for (var y = 190; y < 265; y++)
+                    {
+                        var c = source.GetPixel(x, y);
+                        var value = Math.Max(c.R, Math.Max(c.G, c.B));
+                        if (c.A < 180 || value >= 90) continue;
+                        rows.Add(y);
+                        if (value < darkest) { darkest = value; ink = Color.FromArgb(255, c.R, c.G, c.B); }
+                    }
+                    if (rows.Count != 0) samples.Add((x, rows.Average(), rows.Count));
+                }
+                if (samples.Count < 20) return null;
+                var mx = samples.Average(p => p.X);
+                var my = samples.Average(p => p.Y);
+                var slope = samples.Sum(p => (p.X - mx) * (p.Y - my)) / samples.Sum(p => (p.X - mx) * (p.X - mx));
+                return new DeskEdge((float)slope, (float)(my - slope * mx),
+                    (float)samples.Average(p => p.Thickness) + 0.5f, ink);
+            }
+        }
 
         public void Dispose()
         {

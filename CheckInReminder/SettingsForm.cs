@@ -4,10 +4,6 @@ namespace CheckInReminder;
 
 internal sealed class SettingsForm : Form
 {
-    private const int ExpandedBreakHeight = 320;
-    private const int AutoStartCardHeight = 128;
-    private const int ToggleCardHeight = 128;
-    private const int ScrollableContentHeight = 1084;
     private const int SideNavWidth = 148;
     private readonly SoftTimePicker morningStartPicker;
     private readonly SoftTimePicker morningEndPicker;
@@ -39,6 +35,7 @@ internal sealed class SettingsForm : Form
     {
         this.saveSettings = saveSettings;
         this.testReminder = testReminder;
+        int S(int value) => (int)Math.Round(value * DeviceDpi / 96f);
 
         Text = UiTheme.SettingsTitle;
         StartPosition = FormStartPosition.CenterScreen;
@@ -47,8 +44,9 @@ internal sealed class SettingsForm : Form
         MinimizeBox = false;
         ShowInTaskbar = false;
         AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(980, 700);
-        MinimumSize = new Size(860, 600);
+        AutoScaleDimensions = new SizeF(DeviceDpi, DeviceDpi);
+        ClientSize = new Size(S(980), S(700));
+        MinimumSize = new Size(S(860), S(600));
         BackColor = UiTheme.WarmBackgroundColor;
         ForeColor = UiTheme.TextColor;
         Font = new Font((SystemFonts.MessageBoxFont ?? Control.DefaultFont).FontFamily, 10);
@@ -94,71 +92,33 @@ internal sealed class SettingsForm : Form
             "上班前这段时间里提醒你打卡",
             ("开始时间", morningStartPicker),
             ("结束时间", morningEndPicker),
-            ("提醒间隔（分钟）", morningIntervalBox));
+            ("间隔（分钟）", morningIntervalBox));
         var eveningCard = CreateSettingsCard(
             IconBadge.IconKind.Moon,
             "晚上提醒",
             "下班前提醒你打卡并温柔挽留",
             ("开始时间", eveningStartPicker),
-            ("提醒间隔（分钟）", eveningIntervalBox));
+            ("间隔（分钟）", eveningIntervalBox));
         var breakCardResult = CreateBreakCard();
         var breakCard = breakCardResult.Card;
         breakDetails = breakCardResult.Details;
         var autoStartCard = CreateToggleCard(
             IconBadge.IconKind.Power,
             "开机自启动",
-            "登录 Windows 后自动守候提醒",
+            "登录 Windows 后自动启动",
             autoStartToggle);
         var desktopPetCard = CreateToggleCard(
             IconBadge.IconKind.Paw,
             "桌面宠物",
-            "常驻桌面角落，敲键盘时陪你一起敲",
+            "敲键盘时，陪你一起敲",
             desktopPetToggle);
 
-        var leftColumn = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 5,
-            BackColor = Color.Transparent,
-            Margin = new Padding(0, 0, 8, 0),
-        };
-        leftColumn.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        leftColumn.RowStyles.Add(new RowStyle(SizeType.Absolute, 268));
-        leftColumn.RowStyles.Add(new RowStyle(SizeType.Absolute, 208));
-        leftColumn.RowStyles.Add(new RowStyle(SizeType.Absolute, ExpandedBreakHeight));
-        leftColumn.RowStyles.Add(new RowStyle(SizeType.Absolute, AutoStartCardHeight));
-        leftColumn.RowStyles.Add(new RowStyle(SizeType.Absolute, ToggleCardHeight));
-        AddCard(leftColumn, morningCard, 0);
-        AddCard(leftColumn, eveningCard, 1);
-        AddCard(leftColumn, breakCard, 2);
-        AddCard(leftColumn, autoStartCard, 3);
-        AddCard(leftColumn, desktopPetCard, 4);
-
-        var characterCard = new RoundedPanel
-        {
-            Dock = DockStyle.Fill,
-            Padding = new Padding(2),
-            Margin = new Padding(8, 0, 0, 0),
-        };
+        var characterCard = CreateSurface();
+        characterCard.Padding = Padding.Empty;
         characterCard.Controls.Add(currentCharacterPreview);
-
-        var content = new TableLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            Height = ScrollableContentHeight,
-            ColumnCount = 2,
-            RowCount = 1,
-            Padding = new Padding(24, 18, 24, 14),
-            BackColor = UiTheme.WarmBackgroundColor,
-            Margin = Padding.Empty,
-        };
-        content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 61));
-        content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 39));
-        content.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        content.Controls.Add(leftColumn, 0, 0);
-        content.Controls.Add(characterCard, 1, 0);
-
+        var content = new SettingsDashboardPanel(
+            [morningCard, eveningCard, breakCard],
+            [characterCard, autoStartCard, desktopPetCard]);
         settingsPage = new BufferedScrollPanel
         {
             Dock = DockStyle.Fill,
@@ -198,7 +158,7 @@ internal sealed class SettingsForm : Form
             Margin = Padding.Empty,
             Padding = Padding.Empty,
         };
-        middleRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, SideNavWidth));
+        middleRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, S(SideNavWidth)));
         middleRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         middleRow.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         middleRow.Controls.Add(sideNav, 0, 0);
@@ -207,16 +167,16 @@ internal sealed class SettingsForm : Form
         saveButton = new BrandButton
         {
             Text = "保存全部设置",
-            Size = new Size(150, 44),
-            CornerRadius = 22,
+            Size = new Size(S(150), S(44)),
+            CornerRadius = S(22),
             AccessibleName = "保存全部设置",
         };
         saveButton.Click += (_, _) => Save();
         var testButton = new BrandButton(BrandButtonKind.Secondary)
         {
             Text = "测试提醒",
-            Size = new Size(118, 44),
-            CornerRadius = 22,
+            Size = new Size(S(118), S(44)),
+            CornerRadius = S(22),
             AccessibleName = "测试提醒",
         };
         testButton.Click += (_, _) => this.testReminder();
@@ -233,9 +193,9 @@ internal sealed class SettingsForm : Form
             Padding = Padding.Empty,
         };
         shell.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 86));
+        shell.RowStyles.Add(new RowStyle(SizeType.Absolute, S(86)));
         shell.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 78));
+        shell.RowStyles.Add(new RowStyle(SizeType.Absolute, S(78)));
         shell.Controls.Add(CreateHeader(), 0, 0);
         shell.Controls.Add(middleRow, 0, 1);
         shell.Controls.Add(footer, 0, 2);
@@ -306,6 +266,7 @@ internal sealed class SettingsForm : Form
             Dock = DockStyle.Fill,
             Margin = Padding.Empty,
         };
+        int S(int value) => (int)Math.Round(value * header.DeviceDpi / 96f);
         var title = new Label
         {
             Text = "打个卡",
@@ -313,7 +274,7 @@ internal sealed class SettingsForm : Form
             Font = new Font((SystemFonts.MessageBoxFont ?? Control.DefaultFont).FontFamily, 20, FontStyle.Bold),
             ForeColor = Color.FromArgb(255, 251, 244),
             BackColor = Color.Transparent,
-            Location = new Point(30, 12),
+            Location = new Point(S(30), S(12)),
         };
         var subtitle = new Label
         {
@@ -321,115 +282,114 @@ internal sealed class SettingsForm : Form
             AutoSize = true,
             ForeColor = Color.FromArgb(250, 236, 218),
             BackColor = Color.Transparent,
-            Location = new Point(32, 58),
+            Location = new Point(S(32), S(58)),
         };
         header.Controls.Add(title);
         header.Controls.Add(subtitle);
         return header;
     }
 
+    private static RoundedPanel CreateSurface()
+    {
+        var card = new RoundedPanel
+        {
+            Dock = DockStyle.Fill, ShowShadow = false, ShowOutline = true,
+            SurfaceColor = UiTheme.SurfaceColor, OutlineColor = UiTheme.BorderColor,
+            Margin = Padding.Empty,
+        };
+        card.CornerRadius = (int)Math.Round(18 * card.DeviceDpi / 96f);
+        card.Padding = new Padding((int)Math.Round(16 * card.DeviceDpi / 96f));
+        return card;
+    }
     private static RoundedPanel CreateSettingsCard(
-        IconBadge.IconKind icon,
-        string title,
-        string subtitle,
+        IconBadge.IconKind icon, string title, string subtitle,
         params (string Label, Control Control)[] rows)
     {
-        var card = new RoundedPanel { Dock = DockStyle.Fill, ShowOutline = false };
+        var card = CreateSurface();
         var header = new CardHeader(icon, title, subtitle) { Dock = DockStyle.Top };
+        var fields = CreateFieldGrid(rows);
         var layout = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill,
-            ColumnCount = 2,
-            RowCount = rows.Length + 1,
-            Padding = new Padding(20, 10, 20, 14),
-            BackColor = Color.Transparent,
+            Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2,
+            BackColor = Color.Transparent, Margin = Padding.Empty,
         };
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 56));
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 44));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, header.Height));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         layout.Controls.Add(header, 0, 0);
-        layout.SetColumnSpan(header, 2);
-        for (var index = 0; index < rows.Length; index++)
-        {
-            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100f / rows.Length));
-            AddSettingRow(layout, rows[index].Label, rows[index].Control, index + 1);
-        }
-
+        layout.Controls.Add(fields, 0, 1);
         card.Controls.Add(layout);
         return card;
+    }
+
+    private static TableLayoutPanel CreateFieldGrid(params (string Label, Control Control)[] rows)
+    {
+        var grid = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill, ColumnCount = rows.Length, RowCount = 2,
+            BackColor = Color.Transparent, Margin = Padding.Empty,
+        };
+        grid.RowStyles.Add(new RowStyle(SizeType.Absolute, (int)Math.Round(22 * grid.DeviceDpi / 96f)));
+        grid.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        for (var i = 0; i < rows.Length; i++)
+        {
+            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / rows.Length));
+            grid.Controls.Add(new Label
+            {
+                Text = rows[i].Label, Dock = DockStyle.Fill,
+                ForeColor = UiTheme.MutedTextColor, BackColor = Color.Transparent,
+                Font = new Font("Microsoft YaHei UI", 8.5f),
+                Margin = Padding.Empty, TextAlign = ContentAlignment.MiddleLeft,
+            }, i, 0);
+            rows[i].Control.AccessibleName = rows[i].Label;
+            grid.Controls.Add(new CompactInputSlot(rows[i].Control)
+            {
+                Margin = new Padding(0, 0, i == rows.Length - 1 ? 0 : (int)Math.Round(10 * grid.DeviceDpi / 96f), 0),
+            }, i, 1);
+        }
+        return grid;
     }
 
     private (RoundedPanel Card, Panel Details) CreateBreakCard()
     {
-        var card = new RoundedPanel { Dock = DockStyle.Fill, ShowOutline = false };
+        var card = CreateSurface();
         var header = new CardHeader(IconBadge.IconKind.Chair, "久坐提醒", "按工作时段提醒你站起来活动");
-        var layout = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 2,
-            RowCount = 2,
-            BackColor = Color.Transparent,
-            Padding = new Padding(20, 12, 20, 12),
-        };
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 54));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, header.Height));
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        layout.Controls.Add(header, 0, 0);
-        layout.Controls.Add(breakReminderToggle, 1, 0);
-
-        var details = new Panel
-        {
-            Dock = DockStyle.Fill,
-            BackColor = Color.Transparent,
-            Margin = Padding.Empty,
-        };
-        var detailsLayout = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 2,
-            RowCount = 3,
-            BackColor = Color.Transparent,
-            Margin = Padding.Empty,
-        };
-        detailsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 56));
-        detailsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 44));
-        for (var row = 0; row < 3; row++)
-        {
-            detailsLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 33.333f));
-        }
-        AddSettingRow(detailsLayout, "开始时间", breakStartPicker, 0);
-        AddSettingRow(detailsLayout, "结束时间", breakEndPicker, 1);
-        AddSettingRow(detailsLayout, "提醒间隔", breakIntervalBox, 2);
-        details.Controls.Add(detailsLayout);
+        var layout = CreateToggleLayout(header, breakReminderToggle);
+        var details = new Panel { Dock = DockStyle.Fill, BackColor = Color.Transparent, Margin = Padding.Empty };
+        details.Controls.Add(CreateFieldGrid(
+            ("开始时间", breakStartPicker), ("结束时间", breakEndPicker), ("提醒间隔", breakIntervalBox)));
         layout.Controls.Add(details, 0, 1);
         layout.SetColumnSpan(details, 2);
-
         card.Controls.Add(layout);
         return (card, details);
     }
 
-    private static RoundedPanel CreateToggleCard(IconBadge.IconKind icon, string title, string subtitle, ToggleSwitch toggle)
+    private static TableLayoutPanel CreateToggleLayout(CardHeader header, ToggleSwitch toggle)
     {
-        var card = new RoundedPanel { Dock = DockStyle.Fill, ShowOutline = false };
-        var header = new CardHeader(icon, title, subtitle);
+        header.Margin = Padding.Empty;
         var layout = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill,
-            ColumnCount = 2,
-            RowCount = 1,
-            Padding = new Padding(20, 12, 20, 12),
-            BackColor = Color.Transparent,
+            Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2,
+            BackColor = Color.Transparent, Margin = Padding.Empty,
         };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 54));
+        var dpiScale = layout.DeviceDpi / 96f;
+        toggle.Size = new Size((int)Math.Round(48 * dpiScale), (int)Math.Round(26 * dpiScale));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, (int)Math.Round(54 * dpiScale)));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, header.Height));
+        // 即便没有详情也保留弹性尾行，避免最后一个绝对行被拉伸而改变标题/开关对齐。
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         layout.Controls.Add(header, 0, 0);
         layout.Controls.Add(toggle, 1, 0);
-        card.Controls.Add(layout);
-        return card;
+        return layout;
     }
 
+    private static RoundedPanel CreateToggleCard(IconBadge.IconKind icon, string title, string subtitle, ToggleSwitch toggle)
+    {
+        var card = CreateSurface();
+        card.Controls.Add(CreateToggleLayout(new CardHeader(icon, title, subtitle), toggle));
+        return card;
+    }
     private static Control CreateFooter(BrandButton testButton, BrandButton saveButton)
     {
         var footer = new TableLayoutPanel
@@ -441,6 +401,8 @@ internal sealed class SettingsForm : Form
             BackColor = Color.Transparent,
             Margin = Padding.Empty,
         };
+        int S(int value) => (int)Math.Round(value * footer.DeviceDpi / 96f);
+        footer.Padding = new Padding(S(26), S(12), S(26), S(16));
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         footer.Controls.Add(new Label
@@ -459,7 +421,7 @@ internal sealed class SettingsForm : Form
             BackColor = Color.Transparent,
             Margin = Padding.Empty,
         };
-        testButton.Margin = new Padding(0, 0, 12, 0);
+        testButton.Margin = new Padding(0, 0, S(12), 0);
         testButton.Anchor = AnchorStyles.None;
         saveButton.Margin = Padding.Empty;
         saveButton.Anchor = AnchorStyles.None;
@@ -566,25 +528,6 @@ internal sealed class SettingsForm : Form
         3 => 180,
         _ => 60,
     };
-
-    private static void AddSettingRow(TableLayoutPanel layout, string text, Control control, int row)
-    {
-        layout.Controls.Add(new Label
-        {
-            Text = text,
-            AutoSize = true,
-            Anchor = AnchorStyles.Left,
-            ForeColor = UiTheme.MutedTextColor,
-            BackColor = Color.Transparent,
-        }, 0, row);
-        layout.Controls.Add(control, 1, row);
-    }
-
-    private static void AddCard(TableLayoutPanel layout, Control card, int row)
-    {
-        card.Margin = new Padding(0, row == 0 ? 0 : 6, 0, 6);
-        layout.Controls.Add(card, 0, row);
-    }
 
     private void AnimateOpening()
     {

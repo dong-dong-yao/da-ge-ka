@@ -1,24 +1,20 @@
 namespace CheckInReminder;
 
-/// <summary>
-/// 角色选择页：标题 + 两列角色卡片网格。同一时间只播放一张卡片的预览动画
-/// （悬停或当前确认的卡片），滚动/缩放期间全部暂停。
-/// </summary>
+/// <summary>随窗口宽度变化的角色画廊，同时只播放鼠标所在卡片。</summary>
 internal sealed class CharactersPage : Panel
 {
-    private const int CardHeight = 300;
-    private const int CardMargin = 6;
-    private const int GridColumns = 2;
-
     private readonly CharacterSelection selection;
     private readonly List<CharacterCardControl> cards = [];
+    private readonly Panel content;
+    private readonly Label title;
+    private readonly Label subtitle;
     private readonly System.Windows.Forms.Timer scrollIdleTimer;
     private CharacterCardControl? activeCard;
     private bool interactionPaused;
     private bool scrollSettling;
+    private bool arranging;
 
     public event EventHandler<string>? CharacterConfirmed;
-
     public string ConfirmedCharacterId => selection.ConfirmedCharacterId;
 
     public CharactersPage(string? initialCharacterId)
@@ -29,83 +25,37 @@ internal sealed class CharactersPage : Panel
         AutoScroll = true;
         BackColor = UiTheme.WarmBackgroundColor;
         Margin = Padding.Empty;
-
         selection = new CharacterSelection(AnimationCatalog.Characters, initialCharacterId);
-
-        var characters = AnimationCatalog.Characters;
-        var rowCount = (characters.Count + GridColumns - 1) / GridColumns;
-        var gridHeight = rowCount * (CardHeight + (CardMargin * 2));
-
-        var grid = new TableLayoutPanel
+        content = new Panel { BackColor = BackColor, Margin = Padding.Empty };
+        title = new Label
         {
-            Dock = DockStyle.Fill,
-            ColumnCount = GridColumns,
-            RowCount = rowCount,
-            BackColor = Color.Transparent,
-            Margin = Padding.Empty,
+            Text = "选一位提醒伙伴",
+            Font = new Font("Microsoft YaHei UI", 16, FontStyle.Bold),
+            ForeColor = UiTheme.TextColor,
+            AutoSize = false,
         };
-        for (var column = 0; column < GridColumns; column++)
+        subtitle = new Label
         {
-            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / GridColumns));
-        }
-        for (var row = 0; row < rowCount; row++)
+            Text = "把准时这件小事，交给喜欢的它。选好后记得保存设置。",
+            Font = new Font("Microsoft YaHei UI", 9),
+            ForeColor = UiTheme.MutedTextColor,
+            AutoSize = false,
+        };
+        content.Controls.Add(title);
+        content.Controls.Add(subtitle);
+        foreach (var character in AnimationCatalog.Characters)
         {
-            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, CardHeight + (CardMargin * 2)));
-        }
-
-        for (var index = 0; index < characters.Count; index++)
-        {
-            var character = characters[index];
-            var card = new CharacterCardControl(
-                character,
-                isConfirmed: string.Equals(
-                    character.Id, selection.ConfirmedCharacterId, StringComparison.Ordinal))
+            var card = new CharacterCardControl(character, character.Id == selection.ConfirmedCharacterId);
+            card.Hovered += (_, _) => { activeCard = card; UpdatePlayback(); };
+            card.HoverEnded += (_, _) =>
             {
-                Margin = new Padding(CardMargin),
+                if (ReferenceEquals(activeCard, card)) { activeCard = null; UpdatePlayback(); }
             };
-            card.Hovered += (_, _) => Activate(card);
             card.Confirmed += (_, _) => ConfirmCard(card);
             cards.Add(card);
-            grid.Controls.Add(card, index % GridColumns, index / GridColumns);
+            content.Controls.Add(card);
         }
-
-        var title = new Label
-        {
-            Text = "选择提醒角色",
-            AutoSize = true,
-            Font = new Font((SystemFonts.MessageBoxFont ?? Control.DefaultFont).FontFamily, 14, FontStyle.Bold),
-            ForeColor = UiTheme.TextColor,
-            BackColor = Color.Transparent,
-            Margin = new Padding(6, 0, 0, 2),
-        };
-        var subtitle = new Label
-        {
-            Text = "悬停卡片可以预览动画，确认后提醒时就会播放它",
-            AutoSize = true,
-            ForeColor = UiTheme.MutedTextColor,
-            BackColor = Color.Transparent,
-            Margin = new Padding(6, 0, 0, 12),
-        };
-
-        var content = new TableLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            Height = 34 + 24 + 12 + gridHeight + 32,
-            ColumnCount = 1,
-            RowCount = 3,
-            Padding = new Padding(24, 18, 24, 14),
-            BackColor = UiTheme.WarmBackgroundColor,
-            Margin = Padding.Empty,
-        };
-        content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        content.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        content.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        content.RowStyles.Add(new RowStyle(SizeType.Absolute, gridHeight));
-        content.Controls.Add(title, 0, 0);
-        content.Controls.Add(subtitle, 0, 1);
-        content.Controls.Add(grid, 0, 2);
         Controls.Add(content);
-
         scrollIdleTimer = new System.Windows.Forms.Timer { Interval = 120 };
         scrollIdleTimer.Tick += (_, _) =>
         {
@@ -116,37 +66,52 @@ internal sealed class CharactersPage : Panel
         Scroll += (_, _) =>
         {
             scrollSettling = true;
+            activeCard = null;
             UpdatePlayback();
             scrollIdleTimer.Stop();
             scrollIdleTimer.Start();
         };
-
-        // 初始让当前确认的卡片播放，页面一打开就是活的
-        activeCard = cards.FirstOrDefault(card => string.Equals(
-            card.Character.Id, selection.ConfirmedCharacterId, StringComparison.Ordinal));
-        UpdatePlayback();
+        VisibleChanged += (_, _) => { activeCard = null; UpdatePlayback(); };
     }
 
-    /// <summary>滚动/缩放等交互期间暂停本页所有预览动画。</summary>
+    protected override void OnLayout(LayoutEventArgs e)
+    {
+        if (content is null || arranging)
+        {
+            base.OnLayout(e);
+            return;
+        }
+        arranging = true;
+        try
+        {
+            int S(int value) => (int)Math.Round(value * DeviceDpi / 96f);
+            // 留出滚动条空间，避免列数在临界宽度来回切换。
+            var available = Math.Max(S(200), Width - SystemInformation.VerticalScrollBarWidth - S(48));
+            var width = Math.Min(S(1020), available);
+            var columns = width >= S(690) ? 3 : width >= S(440) ? 2 : 1;
+            var gap = S(14);
+            var cardWidth = (width - gap * (columns - 1)) / columns;
+            var rows = (cards.Count + columns - 1) / columns;
+            var header = S(56);
+            var cardHeight = Math.Clamp((ClientSize.Height - S(24) - header - gap * (rows - 1)) / rows, S(218), S(280));
+            var height = header + rows * (cardHeight + gap) - gap;
+            AutoScrollMinSize = new Size(0, height + S(24));
+            content.Bounds = new Rectangle(Math.Max(S(24), (ClientSize.Width - width) / 2) + AutoScrollPosition.X,
+                S(12) + AutoScrollPosition.Y, width, height);
+            title.Bounds = new Rectangle(0, 0, width, S(36));
+            subtitle.Bounds = new Rectangle(1, S(36), width, S(20));
+            for (var i = 0; i < cards.Count; i++)
+                cards[i].Bounds = new Rectangle(i % columns * (cardWidth + gap),
+                    header + i / columns * (cardHeight + gap), cardWidth, cardHeight);
+            // 子控件缩小后再重算滚动范围，否则旧的大尺寸会留下多余滚动条。
+            base.OnLayout(e);
+        }
+        finally { arranging = false; }
+    }
+
     internal void SetInteractionPaused(bool paused)
     {
-        if (interactionPaused == paused)
-        {
-            return;
-        }
-
         interactionPaused = paused;
-        UpdatePlayback();
-    }
-
-    private void Activate(CharacterCardControl card)
-    {
-        if (ReferenceEquals(activeCard, card))
-        {
-            return;
-        }
-
-        activeCard = card;
         UpdatePlayback();
     }
 
@@ -154,21 +119,14 @@ internal sealed class CharactersPage : Panel
     {
         selection.SelectById(card.Character.Id);
         var confirmedId = selection.Confirm();
-        foreach (var item in cards)
-        {
-            item.SetConfirmed(string.Equals(item.Character.Id, confirmedId, StringComparison.Ordinal));
-        }
-
+        foreach (var item in cards) item.SetConfirmed(item.Character.Id == confirmedId);
         CharacterConfirmed?.Invoke(this, confirmedId);
     }
 
     private void UpdatePlayback()
     {
-        var allowPlaying = !interactionPaused && !scrollSettling;
         foreach (var card in cards)
-        {
-            card.SetPlaying(allowPlaying && ReferenceEquals(card, activeCard));
-        }
+            card.SetPlaying(Visible && !interactionPaused && !scrollSettling && ReferenceEquals(card, activeCard));
     }
 
     protected override void Dispose(bool disposing)
@@ -177,8 +135,9 @@ internal sealed class CharactersPage : Panel
         {
             scrollIdleTimer.Stop();
             scrollIdleTimer.Dispose();
+            title.Font.Dispose();
+            subtitle.Font.Dispose();
         }
-
         base.Dispose(disposing);
     }
 }

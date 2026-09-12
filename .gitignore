@@ -11,4 +11,5 @@ release/
 .workbuddy/
 .worktrees/
 .superpowers/
+artifacts/
 docs/*交接*.md

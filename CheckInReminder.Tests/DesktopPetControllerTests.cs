@@ -15,6 +15,165 @@ public sealed class DesktopPetControllerTests
     [DataRow("blue-hat-cat")]
     [DataRow("stick-dog")]
     [DataRow("scooter-dinosaur")]
+    public void SpritePets_DeskLineStaysContinuousWhenArmMovesAway(string characterId)
+    {
+        Assert.IsTrue(DesktopPetSpriteSet.TryLoad(characterId, out var sprites));
+        using (sprites)
+        foreach (var target in new[] { -1f, 0f, 0.5f, 1f })
+        {
+            using var frame = sprites.Render(DesktopPetRigPose.Rest with
+            {
+                KeyboardContact = target >= 0, KeyboardTarget = new PointF(Math.Max(0, target), 0.5f),
+                MouseOffset = new PointF(1, 1), MousePress = 1,
+            });
+            // These two supplied press-right images have no left desk line.
+            // Preserve that absence instead of inventing an edge for the test.
+            if ((characterId == "yellow-hippo" && target == 1)
+                || (characterId == "scooter-dinosaur" && target >= 0.5f))
+            {
+                Assert.IsFalse(Enumerable.Range(190, 75).Any(y => frame.GetPixel(20, y).A > 150));
+                continue;
+            }
+            // Independent reference: extrapolate the unoccluded, static left
+            // section of this artwork's desk edge, not the rig's own geometry.
+            double EdgeY(int x)
+            {
+                var rows = Enumerable.Range(190, 75).Where(y =>
+                {
+                    var c = frame.GetPixel(x, y);
+                    return c.A > 150 && Math.Max(c.R, Math.Max(c.G, c.B)) < 90;
+                }).ToArray();
+                Assert.IsNotEmpty(rows, $"{characterId} target={target} x={x}");
+                return rows.Average();
+            }
+            var y20 = EdgeY(20);
+            var slope = (EdgeY(90) - y20) / 70;
+            for (var x = 132; x <= 145; x++)
+            {
+                var expectedY = (int)Math.Round(y20 + (x - 20) * slope);
+                var present = Enumerable.Range(expectedY - 1, 3).Any(y =>
+                {
+                    var c = frame.GetPixel(x, y);
+                    return c.A > 150 && Math.Max(c.R, Math.Max(c.G, c.B)) < 90;
+                });
+                Assert.IsTrue(present, $"{characterId} pose={target}: 桌沿在 {x},{expectedY} 断开或随手移动");
+            }
+        }
+    }
+
+    [TestMethod]
+    [DataRow("yellow-hippo")]
+    [DataRow("blue-hat-cat")]
+    [DataRow("stick-dog")]
+    [DataRow("scooter-dinosaur")]
+    public void SpritePets_AllKeyboardFramesKeepMouseLayerIndependent(string characterId)
+    {
+        Assert.IsTrue(DesktopPetSpriteSet.TryLoad(characterId, out var sprites));
+        using (sprites)
+        using (var sheet = new Bitmap(2400, 1792))
+        using (var graphics = Graphics.FromImage(sheet))
+        {
+            graphics.Clear(Color.FromArgb(35, 35, 35));
+            var row = 0;
+            foreach (var target in new[] { -1f, 0f, 0.5f, 1f })
+            {
+                var pose = DesktopPetRigPose.Rest with { KeyboardContact = target >= 0,
+                    KeyboardTarget = new PointF(Math.Max(0, target), 0.5f), KeyboardPress = target >= 0 ? 1 : 0 };
+                using var rest = sprites.Render(pose);
+                var column = 0;
+                foreach (var offset in new[] { new PointF(-1, -1), new PointF(1, -1),
+                    new PointF(-1, 1), new PointF(1, 1) })
+                {
+                    using var frame = sprites.Render(pose with { MouseOffset = offset,
+                        MouseRotationDegrees = offset.X, MousePress = 1 });
+                    if (MeanPixelDifference(rest, frame, new Rectangle(20, 280, 70, 90)) != 0)
+                    {
+                        for (var y = 280; y < 370; y++)
+                        for (var x = 20; x < 90; x++)
+                            if (rest.GetPixel(x, y) != frame.GetPixel(x, y))
+                                Assert.Fail($"{characterId} target={target} offset={offset} diff at {x},{y}: {rest.GetPixel(x,y)} -> {frame.GetPixel(x,y)}");
+                    }
+                    Assert.IsGreaterThan(2d, MeanPixelDifference(rest, frame, new Rectangle(112, 305, 82, 35)));
+                    Assert.AreEqual(0d, MeanPixelDifference(rest, frame, new Rectangle(20, 280, 70, 90)),
+                        "鼠标垫外侧轮廓必须保持逐像素静止");
+                    Assert.AreEqual(0d, MeanPixelDifference(rest, frame, new Rectangle(300, 0, 300, 448)),
+                        "鼠标变形不能影响身体右侧及键盘");
+                    graphics.DrawImageUnscaled(frame, column++ * 600, row * 448);
+                }
+                row++;
+            }
+            foreach (var field in new[] { "idleMouseLayers", "leftMouseLayers", "centerMouseLayers", "rightMouseLayers" })
+            {
+                var layers = typeof(DesktopPetSpriteSet).GetField(field, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(sprites);
+                if (layers is null) continue;
+                var background = (Bitmap)layers.GetType().GetProperty("Background")!.GetValue(layers)!;
+                for (var y = 275; y < 330; y++)
+                for (var x = 130; x < 200; x++)
+                {
+                    var color = background.GetPixel(x, y);
+                    Assert.IsTrue(color.A == 0 || (color.R is >= 100 and <= 210 && Math.Abs(color.R - color.G) < 20
+                        && Math.Abs(color.R - color.B) < 20), $"{characterId}/{field} 静态层残留手或鼠标：{x},{y} {color}");
+                }
+            }
+            var probeDirectory = Environment.GetEnvironmentVariable("PET_RIG_PROBE_DIR");
+            if (!string.IsNullOrEmpty(probeDirectory))
+            {
+                Directory.CreateDirectory(probeDirectory);
+                sheet.Save(Path.Combine(probeDirectory, characterId + "-combinations.png"));
+            }
+        }
+    }
+
+    [TestMethod]
+    [DataRow("yellow-hippo")]
+    [DataRow("blue-hat-cat")]
+    [DataRow("stick-dog")]
+    [DataRow("scooter-dinosaur")]
+    public void SpritePets_OriginalMouseMovesAndNearNeutralDoesNotChangeComposition(string characterId)
+    {
+        Assert.IsTrue(DesktopPetSpriteSet.TryLoad(characterId, out var sprites));
+        using (sprites)
+        {
+            using var left = sprites.Render(DesktopPetRigPose.Rest with { MouseOffset = new PointF(-1, 0) });
+            using var right = sprites.Render(DesktopPetRigPose.Rest with { MouseOffset = new PointF(1, 0) });
+            Assert.IsGreaterThan(2d, MeanPixelDifference(left, right, new Rectangle(112, 305, 82, 35)),
+                "原图鼠标下半部必须随手移动，不能留在静态背景中");
+            using var neutral = sprites.Render(DesktopPetRigPose.Rest);
+            using var almostNeutral = sprites.Render(DesktopPetRigPose.Rest with { MouseOffset = new PointF(0.002f, 0) });
+            var probeDirectory = Environment.GetEnvironmentVariable("PET_RIG_PROBE_DIR");
+            if (!string.IsNullOrEmpty(probeDirectory))
+            {
+                Directory.CreateDirectory(probeDirectory);
+                using var sheet = new Bitmap(1800, 896);
+                using var graphics = Graphics.FromImage(sheet);
+                graphics.Clear(Color.FromArgb(35, 35, 35));
+                var index = 0;
+                foreach (var offset in new[] { PointF.Empty, new PointF(-1, -1), new PointF(1, -1),
+                    new PointF(-1, 1), new PointF(1, 1), PointF.Empty })
+                {
+                    using var frame = sprites.Render(DesktopPetRigPose.Rest with
+                    { MouseOffset = offset, MousePress = index == 5 ? 1 : 0 });
+                    graphics.DrawImageUnscaled(frame, index % 3 * 600, index / 3 * 448);
+                    index++;
+                }
+                sheet.Save(Path.Combine(probeDirectory, characterId + ".png"));
+                var layers = typeof(DesktopPetSpriteSet).GetField("idleMouseLayers", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(sprites)!;
+                foreach (var layerName in new[] { "Background", "MouseArm" })
+                {
+                    var bitmap = (Bitmap)layers.GetType().GetProperty(layerName)!.GetValue(layers)!;
+                    bitmap.Save(Path.Combine(probeDirectory, characterId + "-" + layerName + ".png"));
+                }
+            }
+            Assert.IsLessThan(0.2d, MeanPixelDifference(neutral, almostNeutral),
+                "零位和运动帧必须使用同一组图层，不能在开始移动时突然换图");
+        }
+    }
+
+    [TestMethod]
+    [DataRow("yellow-hippo")]
+    [DataRow("blue-hat-cat")]
+    [DataRow("stick-dog")]
+    [DataRow("scooter-dinosaur")]
     public void SpritePets_MousePointerMovesOnlyTheMouseSideOfTheArtwork(string characterId)
     {
         RunOnStaThread(() =>

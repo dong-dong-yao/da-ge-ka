@@ -1,139 +1,72 @@
 namespace CheckInReminder;
 
-/// <summary>
-/// 设置页右列的只读预览卡：循环播放当前确认角色的提醒动画，
-/// 点击「更换角色 →」跳转到角色页。
-/// </summary>
+/// <summary>设置页的紧凑伙伴卡，保持角色可见与更换入口就近。</summary>
 internal sealed class CurrentCharacterPreviewControl : UserControl
 {
     private readonly AnimationPreviewPlayer player;
-    private readonly PictureBox previewBox;
+    private readonly CharacterPreviewImage previewBox;
+    private readonly Label titleLabel;
+    private readonly Label subtitleLabel;
     private readonly Label nameLabel;
-    private readonly Label statusLabel;
+    private readonly BrandButton changeButton;
 
     public event EventHandler? ChangeCharacterRequested;
-
     public string CurrentCharacterId { get; private set; }
 
     public CurrentCharacterPreviewControl(string? initialCharacterId)
     {
         Dock = DockStyle.Fill;
         BackColor = Color.Transparent;
-        Padding = new Padding(4);
-
-        var character = AnimationCatalog.FindCharacter(initialCharacterId)
-            ?? AnimationCatalog.Characters[0];
+        DoubleBuffered = true;
+        ResizeRedraw = true;
+        var character = AnimationCatalog.FindCharacter(initialCharacterId) ?? AnimationCatalog.Characters[0];
         CurrentCharacterId = character.Id;
-
-        var title = new Label
+        titleLabel = new Label
         {
-            Text = "当前角色",
-            AutoSize = true,
-            Font = new Font((SystemFonts.MessageBoxFont ?? Control.DefaultFont).FontFamily, 14, FontStyle.Bold),
-            ForeColor = UiTheme.TextColor,
-            BackColor = Color.Transparent,
-            Margin = new Padding(0, 0, 0, 2),
+            Text = "你的提醒伙伴", BackColor = Color.Transparent,
+            ForeColor = UiTheme.TextColor, Font = new Font("Microsoft YaHei UI", 11, FontStyle.Bold),
         };
-        var subtitle = new Label
+        subtitleLabel = new Label
         {
-            Text = "提醒时会播放这个角色的动画",
-            AutoSize = true,
-            ForeColor = UiTheme.MutedTextColor,
-            BackColor = Color.Transparent,
-            Margin = new Padding(0, 0, 0, 14),
+            Text = "提醒时，和你见面", BackColor = Color.Transparent,
+            ForeColor = UiTheme.MutedTextColor, Font = new Font("Microsoft YaHei UI", 8.5f),
         };
-
-        previewBox = new PictureBox
-        {
-            Dock = DockStyle.Fill,
-            SizeMode = PictureBoxSizeMode.Zoom,
-            BackColor = UiTheme.AccentSoftColor,
-            Margin = Padding.Empty,
-        };
-        var previewShell = new Panel
-        {
-            BackColor = UiTheme.AccentSoftColor,
-            Padding = new Padding(12),
-            Margin = Padding.Empty,
-            AccessibleName = "角色预览占位图",
-        };
-        previewShell.Controls.Add(previewBox);
-        var previewAspect = new AspectRatioPanel(16d / 9d)
-        {
-            Dock = DockStyle.Fill,
-            Margin = new Padding(0, 2, 0, 14),
-        };
-        previewAspect.Controls.Add(previewShell);
-
+        previewBox = new CharacterPreviewImage { AccessibleName = "当前角色动画预览", TabStop = false };
         nameLabel = new Label
         {
-            Dock = DockStyle.Fill,
-            TextAlign = ContentAlignment.MiddleCenter,
-            Font = new Font((SystemFonts.MessageBoxFont ?? Control.DefaultFont).FontFamily, 14, FontStyle.Bold),
-            ForeColor = UiTheme.TextColor,
-            BackColor = Color.Transparent,
+            Text = character.DisplayName, BackColor = Color.Transparent,
+            ForeColor = UiTheme.TextColor, Font = new Font("Microsoft YaHei UI", 10.5f, FontStyle.Bold),
+            TextAlign = ContentAlignment.MiddleLeft,
         };
-        statusLabel = new Label
+        changeButton = new BrandButton(BrandButtonKind.Secondary)
         {
-            Dock = DockStyle.Fill,
-            TextAlign = ContentAlignment.MiddleCenter,
-            ForeColor = UiTheme.AccentColor,
-            BackColor = Color.Transparent,
-            Font = new Font((SystemFonts.MessageBoxFont ?? Control.DefaultFont).FontFamily, 9.5f, FontStyle.Bold),
-            Text = "使用中 ✓",
-        };
-        var changeButton = new BrandButton(BrandButtonKind.Secondary)
-        {
-            Text = "更换角色 →",
-            Dock = DockStyle.Fill,
-            CornerRadius = 18,
+            Text = "更换 →", CornerRadius = 12,
             AccessibleName = "跳转到角色页面更换角色",
-            Margin = new Padding(0, 8, 0, 0),
+            Font = new Font("Microsoft YaHei UI", 9, FontStyle.Bold),
         };
         changeButton.Click += (_, _) => ChangeCharacterRequested?.Invoke(this, EventArgs.Empty);
-
-        var layout = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 6,
-            BackColor = Color.Transparent,
-            Padding = new Padding(16),
-        };
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 56));
-        layout.Controls.Add(title, 0, 0);
-        layout.Controls.Add(subtitle, 0, 1);
-        layout.Controls.Add(previewAspect, 0, 2);
-        layout.Controls.Add(nameLabel, 0, 3);
-        layout.Controls.Add(statusLabel, 0, 4);
-        layout.Controls.Add(changeButton, 0, 5);
-        Controls.Add(layout);
-
+        Controls.AddRange([titleLabel, subtitleLabel, previewBox, nameLabel, changeButton]);
         player = new AnimationPreviewPlayer(previewBox);
-        nameLabel.Text = character.DisplayName;
         player.Load(character);
     }
 
-    /// <summary>角色页确认新角色后由 SettingsForm 调用，切换到该角色的预览。</summary>
+    protected override void OnLayout(LayoutEventArgs e)
+    {
+        base.OnLayout(e);
+        if (previewBox is null) return;
+        int S(int value) => (int)Math.Round(value * DeviceDpi / 96f);
+        titleLabel.Bounds = new Rectangle(S(18), S(16), Width - S(36), S(24));
+        subtitleLabel.Bounds = new Rectangle(S(18), S(43), Width - S(36), S(20));
+        previewBox.Bounds = new Rectangle(S(18), S(67), Math.Max(1, Width - S(36)), Math.Max(1, Height - S(127)));
+        nameLabel.Bounds = new Rectangle(S(18), Height - S(48), Math.Max(1, Width - S(120)), S(30));
+        changeButton.Bounds = new Rectangle(Width - S(100), Height - S(48), S(82), S(32));
+    }
+
     public void SetCharacter(string characterId)
     {
-        if (string.Equals(CurrentCharacterId, characterId, StringComparison.Ordinal))
-        {
-            return;
-        }
-
+        if (string.Equals(CurrentCharacterId, characterId, StringComparison.Ordinal)) return;
         var character = AnimationCatalog.FindCharacter(characterId);
-        if (character is null)
-        {
-            return;
-        }
-
+        if (character is null) return;
         CurrentCharacterId = character.Id;
         nameLabel.Text = character.DisplayName;
         player.Load(character);
@@ -146,8 +79,11 @@ internal sealed class CurrentCharacterPreviewControl : UserControl
         if (disposing)
         {
             player.Dispose();
+            titleLabel.Font.Dispose();
+            subtitleLabel.Font.Dispose();
+            nameLabel.Font.Dispose();
+            changeButton.Font.Dispose();
         }
-
         base.Dispose(disposing);
     }
 }

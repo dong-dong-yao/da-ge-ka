@@ -112,6 +112,13 @@ public sealed class WhiteBearRigRenderer : IDisposable
     }
 
     private void DrawMouseArm(Graphics graphics, float dx, float dy, float angle)
+        => DrawPinnedMouseArm(graphics, mouseArm, dx, dy, angle,
+            new PointF(211, 230), new PointF(232, 273), At(0.31f, 0.48f),
+            new Rectangle(112, 224, 160, 128));
+
+    internal static void DrawPinnedMouseArm(Graphics graphics, Bitmap mouseArm,
+        float dx, float dy, float angle, PointF seamStart, PointF seamEnd,
+        PointF pivot, Rectangle meshBounds)
     {
         if (dx == 0f && dy == 0f && angle == 0f)
         {
@@ -122,12 +129,12 @@ public sealed class WhiteBearRigRenderer : IDisposable
         var radians = angle * Math.PI / 180d;
         var cosine = (float)Math.Cos(radians);
         var sine = (float)Math.Sin(radians);
-        var pivot = At(0.31f, 0.48f);
         PointF Deform(PointF point)
         {
             // Pin the shoulder cut from (211,230) to (232,273). The original
             // paw/mouse reach full motion 63 px from this line; no new pixels.
-            var weight = Math.Clamp(((211f - point.X) * 43f + (point.Y - 230f) * 21f) / 3000f, 0f, 1f);
+            var weight = Math.Clamp(((seamStart.X - point.X) * (seamEnd.Y - seamStart.Y)
+                + (point.Y - seamStart.Y) * (seamEnd.X - seamStart.X)) / 3000f, 0f, 1f);
             var x = point.X - pivot.X;
             var y = point.Y - pivot.Y;
             var moved = new PointF(pivot.X + x * cosine - y * sine + dx,
@@ -137,22 +144,22 @@ public sealed class WhiteBearRigRenderer : IDisposable
 
         // A small source-pixel mesh preserves the anchored seam while allowing
         // the original mouse to translate and tilt. Each quad is two affine triangles.
-        for (var y = 224; y < 352; y += 16)
-        for (var x = 112; x < 272; x += 16)
+        for (var y = meshBounds.Top; y < meshBounds.Bottom; y += 16)
+        for (var x = meshBounds.Left; x < meshBounds.Right; x += 16)
         {
             var source = new RectangleF(x, y, 16, 16);
             var topLeft = Deform(new PointF(x, y));
             var topRight = Deform(new PointF(x + 16, y));
             var bottomLeft = Deform(new PointF(x, y + 16));
             var bottomRight = Deform(new PointF(x + 16, y + 16));
-            DrawTriangle(graphics, source, [topLeft, topRight, bottomLeft], [topLeft, topRight, bottomLeft]);
+            DrawTriangle(graphics, mouseArm, source, [topLeft, topRight, bottomLeft], [topLeft, topRight, bottomLeft]);
             var opposite = new PointF(topRight.X + bottomLeft.X - bottomRight.X,
                 topRight.Y + bottomLeft.Y - bottomRight.Y);
-            DrawTriangle(graphics, source, [opposite, topRight, bottomLeft], [topRight, bottomRight, bottomLeft]);
+            DrawTriangle(graphics, mouseArm, source, [opposite, topRight, bottomLeft], [topRight, bottomRight, bottomLeft]);
         }
     }
 
-    private void DrawTriangle(Graphics graphics, RectangleF source, PointF[] destination, PointF[] triangle)
+    private static void DrawTriangle(Graphics graphics, Bitmap mouseArm, RectangleF source, PointF[] destination, PointF[] triangle)
     {
         var state = graphics.Save();
         try

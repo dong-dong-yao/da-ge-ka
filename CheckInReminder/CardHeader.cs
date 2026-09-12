@@ -36,7 +36,8 @@ internal sealed class CardHeader : Control
         badgeBitmap = new Bitmap(30, 30);
         using (var badge = new IconBadge { Kind = icon, Size = new Size(30, 30) })
         {
-            badge.DrawToBitmap(badgeBitmap, new Rectangle(0, 0, 30, 30));
+            using var graphics = Graphics.FromImage(badgeBitmap);
+            badge.RenderBadge(graphics);
         }
 
         titleBrush = new SolidBrush(UiTheme.TextColor);

@@ -1,143 +1,123 @@
+using System.Drawing.Drawing2D;
+
 namespace CheckInReminder;
 
-/// <summary>
-/// 角色页网格中的一张角色卡：动画预览（悬停时播放）+ 名称 + 确认按钮。
-/// 非活动卡片停在第 0 帧静帧，避免多个动画 Timer 同时运行。
-/// </summary>
+/// <summary>以角色为主体的画廊卡片，静止时展示完整封面，悬停时播放。</summary>
 internal sealed class CharacterCardControl : UserControl
 {
     private readonly AnimationPreviewPlayer player;
-    private readonly Label statusLabel;
+    private readonly CharacterPreviewImage preview;
     private readonly BrandButton confirmButton;
+    private readonly Font nameFont = new("Microsoft YaHei UI", 11, FontStyle.Bold);
+    private readonly Font detailFont = new("Microsoft YaHei UI", 8.5f);
+    private bool confirmed;
+    private bool hovered;
 
     public event EventHandler? Hovered;
-
+    public event EventHandler? HoverEnded;
     public event EventHandler? Confirmed;
-
     public ReminderCharacter Character { get; }
 
     public CharacterCardControl(ReminderCharacter character, bool isConfirmed)
     {
         Character = character;
-        Dock = DockStyle.Fill;
-        BackColor = Color.Transparent;
-        Margin = new Padding(4);
+        DoubleBuffered = true;
+        ResizeRedraw = true;
+        BackColor = UiTheme.WarmBackgroundColor;
         AccessibleName = $"角色 {character.DisplayName}";
-
-        var card = new RoundedPanel
+        preview = new CharacterPreviewImage
         {
-            Dock = DockStyle.Fill,
-            ShowOutline = false,
-            Padding = new Padding(14),
+            AccessibleName = $"{character.DisplayName}动画预览",
+            TabStop = false,
         };
-
-        var previewBox = new PictureBox
+        confirmButton = new BrandButton(BrandButtonKind.Secondary)
         {
-            Dock = DockStyle.Fill,
-            SizeMode = PictureBoxSizeMode.Zoom,
-            BackColor = UiTheme.AccentSoftColor,
-            Margin = Padding.Empty,
-        };
-        var previewShell = new Panel
-        {
-            BackColor = UiTheme.AccentSoftColor,
-            Padding = new Padding(10),
-            Margin = Padding.Empty,
-            AccessibleName = "角色预览占位图",
-        };
-        previewShell.Controls.Add(previewBox);
-        var previewAspect = new AspectRatioPanel(16d / 9d)
-        {
-            Dock = DockStyle.Fill,
-            Margin = new Padding(0, 0, 0, 10),
-        };
-        previewAspect.Controls.Add(previewShell);
-
-        var nameRow = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 2,
-            RowCount = 1,
-            BackColor = Color.Transparent,
-            Margin = Padding.Empty,
-        };
-        nameRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        nameRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        nameRow.Controls.Add(new Label
-        {
-            Text = character.DisplayName,
-            Dock = DockStyle.Fill,
-            TextAlign = ContentAlignment.MiddleLeft,
-            Font = new Font((SystemFonts.MessageBoxFont ?? Control.DefaultFont).FontFamily, 12, FontStyle.Bold),
-            ForeColor = UiTheme.TextColor,
-            BackColor = Color.Transparent,
-        }, 0, 0);
-        statusLabel = new Label
-        {
-            AutoSize = true,
-            Anchor = AnchorStyles.Right,
-            TextAlign = ContentAlignment.MiddleRight,
-            Font = new Font((SystemFonts.MessageBoxFont ?? Control.DefaultFont).FontFamily, 9.5f, FontStyle.Bold),
-            ForeColor = UiTheme.AccentColor,
-            BackColor = Color.Transparent,
-        };
-        nameRow.Controls.Add(statusLabel, 1, 0);
-
-        confirmButton = new BrandButton
-        {
-            Text = "使用这个角色",
-            Dock = DockStyle.Fill,
-            CornerRadius = 16,
+            CornerRadius = 12,
             AccessibleName = $"使用角色 {character.DisplayName}",
-            Margin = new Padding(0, 8, 0, 0),
+            Font = new Font("Microsoft YaHei UI", 9, FontStyle.Bold),
         };
         confirmButton.Click += (_, _) => Confirmed?.Invoke(this, EventArgs.Empty);
-
-        var layout = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 3,
-            BackColor = Color.Transparent,
-            Margin = Padding.Empty,
-        };
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
-        layout.Controls.Add(previewAspect, 0, 0);
-        layout.Controls.Add(nameRow, 0, 1);
-        layout.Controls.Add(confirmButton, 0, 2);
-        card.Controls.Add(layout);
-        Controls.Add(card);
-
-        player = new AnimationPreviewPlayer(previewBox);
+        Controls.Add(preview);
+        Controls.Add(confirmButton);
+        player = new AnimationPreviewPlayer(preview);
         player.SetPaused(true);
         player.Load(character);
         SetConfirmed(isConfirmed);
-
         WireHover(this);
     }
 
-    /// <summary>播放或停帧：playing=false 时回到第 0 帧静帧。</summary>
+    protected override void OnLayout(LayoutEventArgs e)
+    {
+        base.OnLayout(e);
+        if (preview is null) return;
+        var unit = DeviceDpi / 96f;
+        int S(int value) => (int)Math.Round(value * unit);
+        preview.Bounds = new Rectangle(S(18), S(28), Math.Max(1, Width - S(36)), Math.Max(1, Height - S(88)));
+        confirmButton.Bounds = new Rectangle(Width - S(99), Height - S(50), S(82), S(32));
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        base.OnPaint(e);
+        var g = e.Graphics;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        int S(int value) => (int)Math.Round(value * DeviceDpi / 96f);
+        var bounds = new Rectangle(1, 1, Math.Max(2, Width - 3), Math.Max(2, Height - 3));
+        using var path = RoundedPanel.CreateRoundedPath(bounds, S(18));
+        using var brush = new SolidBrush(StageColor());
+        g.FillPath(brush, path);
+        using var pen = new Pen(confirmed ? UiTheme.AccentColor : hovered ? UiTheme.BorderStrongColor : Color.FromArgb(226, 218, 207), confirmed ? S(2) : 1);
+        g.DrawPath(pen, path);
+        var textFlags = TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis;
+        TextRenderer.DrawText(g, confirmed ? "●  当前使用" : "悬停预览", detailFont,
+            new Rectangle(S(17), S(10), Width - S(34), S(20)),
+            confirmed ? UiTheme.AccentColor : UiTheme.MutedTextColor, textFlags);
+        TextRenderer.DrawText(g, Character.DisplayName, nameFont,
+            new Rectangle(S(17), Height - S(52), Math.Max(1, Width - S(119)), S(25)), UiTheme.TextColor, textFlags);
+        TextRenderer.DrawText(g, "提醒伙伴", detailFont,
+            new Rectangle(S(17), Height - S(28), Width - S(119), S(17)), UiTheme.MutedTextColor, textFlags);
+    }
+
+    private Color StageColor() => Character.Id switch
+    {
+        "white-bear" => Color.FromArgb(239, 230, 216),
+        "yellow-hippo" => Color.FromArgb(248, 232, 200),
+        "blue-hat-cat" => Color.FromArgb(224, 236, 239),
+        "stick-dog" => Color.FromArgb(239, 226, 218),
+        "scooter-dinosaur" => Color.FromArgb(231, 237, 214),
+        _ => UiTheme.AccentSoftColor,
+    };
+
     public void SetPlaying(bool playing)
     {
-        if (playing)
-        {
-            player.SetPaused(false);
-        }
-        else
-        {
-            player.SetPaused(true);
-            player.ShowFirstFrame();
-        }
+        player.SetPaused(!playing);
+        if (!playing) player.ShowPosterFrame();
     }
 
     public void SetConfirmed(bool isConfirmed)
     {
-        statusLabel.Text = isConfirmed ? "使用中 ✓" : string.Empty;
+        confirmed = isConfirmed;
         confirmButton.Enabled = !isConfirmed;
-        confirmButton.Text = isConfirmed ? "当前使用" : "使用这个角色";
+        confirmButton.Text = isConfirmed ? "已选择 ✓" : "选用 →";
+        Invalidate();
+    }
+
+    private void WireHover(Control control)
+    {
+        control.MouseEnter += (_, _) =>
+        {
+            hovered = true;
+            Invalidate();
+            Hovered?.Invoke(this, EventArgs.Empty);
+        };
+        control.MouseLeave += (_, _) =>
+        {
+            if (RectangleToScreen(ClientRectangle).Contains(Cursor.Position)) return;
+            hovered = false;
+            Invalidate();
+            HoverEnded?.Invoke(this, EventArgs.Empty);
+        };
+        foreach (Control child in control.Controls) WireHover(child);
     }
 
     protected override void Dispose(bool disposing)
@@ -145,17 +125,10 @@ internal sealed class CharacterCardControl : UserControl
         if (disposing)
         {
             player.Dispose();
+            nameFont.Dispose();
+            detailFont.Dispose();
+            confirmButton.Font.Dispose();
         }
-
         base.Dispose(disposing);
-    }
-
-    private void WireHover(Control control)
-    {
-        control.MouseEnter += (_, _) => Hovered?.Invoke(this, EventArgs.Empty);
-        foreach (Control child in control.Controls)
-        {
-            WireHover(child);
-        }
     }
 }

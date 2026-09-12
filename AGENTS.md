@@ -6,7 +6,7 @@
 
 ## 常用命令
 
-本机裸 `dotnet` 无 SDK（`global.json` 锁定 10.0.400），请用本地 SDK：`.\.dotnet\dotnet.exe` 替代下列 `dotnet`。
+`global.json` 锁定 SDK 10.0.400。装有该 SDK 的电脑可直接用 `dotnet`；本机请用 `.\.dotnet\dotnet.exe`（当前工作树通过目录链接共用主仓库 SDK）。
 
 ```powershell
 dotnet test .\CheckInReminder.slnx -c Release
@@ -31,6 +31,7 @@ dotnet publish .\CheckInReminder\CheckInReminder.csproj -c Release -r win-x64 --
 - 不运行无人值守的真实关机或重启测试。
 - 新增角色只需：`Assets/Animations/{角色Id}/` 放帧序列（`frame_0000.png` 起），在 `AnimationCatalog.BuildCharacters()` 注册一行；桌面宠物素材目录约定为 `{角色Id}-pet-idle` / `{角色Id}-pet-tap`（可选，缺失时自动降级为占位帧）。详细 SOP 见 README。
 
-## 当前状态
+## 当前状态（2026-09-12）
 
-截至 2026-09-03，本地测试为 65/65 通过。设置窗口为左侧导航双页面（设置 / 角色），设置页右列显示当前角色只读预览，角色页为网格卡片选择器（同一时间只播一张预览）；桌面宠物已完整实现：透明置顶、默认鼠标穿透（托盘可切拖动模式）、WH_KEYBOARD_LL 钩子只计数不读键值（被杀软拦截时静默降级）、左右爪交替敲击（无宠物素材时从提醒帧派生镜像/抖动占位）、静默 0.4s 回待机，开关为第十二项设置（默认关闭）。设置窗口缩放/滚动、同列开关对齐、页面切换与隐藏页暂停、交互期间动画暂停与滚动双缓冲、关机守护窗体生命周期、宠物状态机与按键节流已有自动化覆盖；透明动画、完整设置页交互、托盘、焦点、自启动、桌面宠物显示与全局钩子、真实关机拦截仍需在 Windows 10/11 环境人工验证。
+v1.1.0 包含桌宠修复、角色画廊、设置页及 DPI 尺寸修复。现役机制与素材约定见 README，验证边界见 VERIFICATION.md。
+本机开发入口仍为 `.worktrees/bongocat-rig`；根目录保留旧分支和宣传素材，勿当作最新源码使用。保留有效工作树、`.dotnet` SDK、原始素材和回退版；仅清理确认可重建的产物。GitHub 发布源码使用 `main`，可执行文件放 Release，不提交进 Git。

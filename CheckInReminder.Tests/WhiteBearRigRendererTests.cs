@@ -213,15 +213,15 @@ public sealed class WhiteBearRigRendererTests
         }
 
         var drawTriangle = typeof(WhiteBearRigRenderer).GetMethod("DrawTriangle",
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
+            BindingFlags.Static | BindingFlags.NonPublic)!;
         using (var graphics = Graphics.FromImage(actual))
         {
             graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
             graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
             var source = new RectangleF(128, 256, 16, 16);
-            drawTriangle.Invoke(renderer, [graphics, source,
+            drawTriangle.Invoke(null, [graphics, layer, source,
                 new[] { corners[0], corners[1], corners[2] }, new[] { corners[0], corners[1], corners[2] }]);
-            drawTriangle.Invoke(renderer, [graphics, source,
+            drawTriangle.Invoke(null, [graphics, layer, source,
                 new[] { corners[0], corners[1], corners[2] }, new[] { corners[1], corners[3], corners[2] }]);
         }
 
