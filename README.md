@@ -111,11 +111,40 @@ dotnet publish .\CheckInReminder\CheckInReminder.csproj `
 
 - `CheckInReminder/`：WinForms 程序、提醒调度、设置持久化、系统托盘和视觉资源。
 - `CheckInReminder.Tests/`：时间节点、窗口边界和视觉主题契约测试。
-- `tools/convert_green_screen.py`：开发期将绿幕 MP4 转为软边透明 PNG 序列；发布后的 EXE 不依赖该脚本或 FFmpeg。
+- `tools/convert_green_screen.py`：开发期将绿幕 MP4 转为软边透明 PNG 序列；运行提醒不依赖该脚本。v1.2 创建器使用随程序打包的视频组件离线导入素材。
 - `tools/SettingsUiProbe/`：独立进程的真实 DPI 尺寸与渲染检查，避免同一测试进程的 DPI 缓存造成误判。
 - `VERIFICATION.md`：自动化验证结果与仍需人工检查的 Windows 行为。
 
 ## 添加一个新角色
+
+### 在软件里创建（v1.2.0-preview.7 本地试用）
+
+角色页点击「＋ 创建角色」，按四步完成：名称与提醒动画 → 出现方式 → 桌面互动（选填）→ 试用并保存。创建后可立即选用，回到设置点击「保存全部设置」生效。角色包保存在 `%LOCALAPPDATA%\CheckInReminder\characters\user-{id}`，独立于程序文件，原始素材移动或程序更新不会影响已创建角色。
+
+- 提醒视频：本机 MP4 / MOV / WebM，3–15 秒，单文件不超过 150 MB，最长边不超过 4096 像素。导入为 12 fps、最长边 520 的透明 PNG 序列，整段统一裁切；音轨忽略。透明 WebM 的透明信息通过对应解码器保留。
+- 视频背景：自动保留透明背景或识别明显绿幕/蓝幕，无需选择处理方式。复杂背景不自动抠人，绿色角色应使用蓝幕或透明素材。
+- 方向：至少启用一个，声明原素材出现方向；可选独立方向视频。未提供时使用现有翻转/旋转规则，预览确认后再启用。
+- 桌宠：按引导上传抬手、按左、按中、按右四张完整透明 PNG，画布尺寸、身体、鼠标和键盘的位置必须一致。检查真实透明度，拒绝不透明白底图；图片保持比例放入 600×448 画布，不做背景抠除。
+- 鼠标互动：先尝试参考模板；效果不准确时，在最后一步点击“手动修复鼠标模块”。先点鼠标、再点手臂进行选取；用“涂上漏掉的／擦掉多选的”修边，按住涂抹时自动出现 3× 放大镜。漏掉黑色轮廓可点“补选黑色边缘”；连接处、鼠标中心、鼠标垫点选等工具直接展示。每张图自动预判纯灰鼠标垫，也可点击灰色区域重新选择；保留备用圈垫。右侧自动试动；四个姿势逐一确认后应用。创建时保存原图、静态底图、移动层和校准，运行时直接变形。纯灰鼠标垫用多点取色补齐，小幅移动；复杂花纹背景不支持。模板未匹配时明确提示，调整前只有键盘动作。也可主动选择仅键盘互动。旧版分层角色包仍可读取。
+- 不传桌宠素材时仅提供提醒；开启全局桌宠开关也不会显示其他角色占位。第二道确认动画和提醒文案沿用原版本。
+- 创建预览支持方向播放、键盘按钮及预览区域鼠标移动/点击。取消或失败不会留下半成品角色。损坏角色包会跳过并在画廊提示；角色丢失时仅回退角色，不重置提醒时间。
+- 可删除所选自定义角色（会要求确认），内置角色不能删除。创建与删除操作立即保存角色内容；选用仍遵循保存设置流程。
+
+程序不调用 AI，不上传素材。视频处理组件随完整本地试用版提供，第一次使用解压到 `%LOCALAPPDATA%\CheckInReminder\media-tools`；不要求用户安装命令行工具。创建器内嵌三视图、提醒视频、抬手图和按键图的分步图文教程，可复制提示词并复制或保存原始动作参考图；已有素材可折叠教程直接上传。
+
+### 开发者打包视频组件
+
+源码不提交约 68 MB 的视频组件 ZIP。准备完整 Windows x64 FFmpeg shared 构建，`bin` 的上级目录需有构建随附 `LICENSE.txt`，运行：
+
+```powershell
+.\tools\pack-media-tools.ps1 -FFmpegDirectory '你的组件目录\bin'
+.\.dotnet\dotnet.exe test .\CheckInReminder.slnx -c Release
+.\.dotnet\dotnet.exe publish .\CheckInReminder\CheckInReminder.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=false
+```
+
+无组件时普通源码构建仍可进行，媒体集成测试会明确跳过，创建器显示组件缺失说明；完整发布命令会拒绝缺组件构建。GitHub Actions 目前只运行测试与构建，不自动发布完整程序。当前本地试用包包含完整组件；组件构建信息和许可见 `Assets/MediaTools/` 与第三方许可窗口。源码更新不等于 GitHub Release 更新。
+
+### 开发者注册内置角色
 
 1. 用 `tools/convert_green_screen.py` 把角色的绿幕 MP4 转成透明 PNG 序列。
 2. 在 `CheckInReminder/Assets/Animations/` 下新建以角色 Id（kebab-case，如 `shiba`）命名的目录，帧文件按 `frame_0000.png` 起的四位序号命名，把序列放进去（csproj 已按通配符嵌入，无需改动工程文件）。

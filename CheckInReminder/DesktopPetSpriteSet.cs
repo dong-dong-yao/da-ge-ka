@@ -75,6 +75,47 @@ internal sealed class DesktopPetSpriteSet : IDisposable
             && Find(names, prefix, "press-right") is not null;
     }
 
+    internal static DesktopPetSpriteSet LoadCustom(string folder)
+    {
+        var loaded = new Dictionary<string, Bitmap>();
+        try
+        {
+            foreach (var name in new[] { "idle", "left", "center", "right" })
+            {
+                var path = Path.Combine(folder, name + ".png");
+                if (name == "center" && !File.Exists(path)) continue;
+                var image = CharacterMediaProcessor.ReadBitmap(path);
+                loaded[name] = image;
+                ValidateTemplate(image);
+            }
+            var result = new DesktopPetSpriteSet(loaded["idle"], loaded["left"], loaded.GetValueOrDefault("center"), loaded["right"]);
+            loaded.Clear();
+            return result;
+        }
+        finally { foreach (var image in loaded.Values) image.Dispose(); }
+    }
+
+    private static void ValidateTemplate(Bitmap image)
+    {
+        if (image.Size != new Size(RenderWidth, RenderHeight)) throw new InvalidDataException("桌面构图不符合参考图：请保持相同比例、鼠标垫与键盘位置。");
+        var pad = 0;
+        foreach (var point in new[] { new Point(70, 290), new Point(80, 310), new Point(100, 330), new Point(210, 335), new Point(108, 336) })
+        {
+            var c = image.GetPixel(point.X, point.Y);
+            var hi = Math.Max(c.R, Math.Max(c.G, c.B)); var lo = Math.Min(c.R, Math.Min(c.G, c.B));
+            if (c.A > 180 && hi - lo < 22 && lo >= 85 && hi <= 225) pad++;
+        }
+        var hand = 0;
+        for (var y = 240; y < 320; y += 4)
+        for (var x = 135; x < 215; x += 4)
+        {
+            var c = image.GetPixel(x, y);
+            var hi = Math.Max(c.R, Math.Max(c.G, c.B)); var lo = Math.Min(c.R, Math.Min(c.G, c.B));
+            if (c.A > 180 && (lo > 215 || hi - lo > 30)) hand++;
+        }
+        if (pad < 2 || hand < 30) throw new InvalidDataException("桌面构图与参考图差别较大，暂时无法可靠匹配鼠标动作。请按参考图重新生成，或选择仅保留键盘动作。");
+    }
+
     public static bool TryLoad(string characterId, out DesktopPetSpriteSet result)
     {
         if (!HasResources(characterId))

@@ -42,6 +42,8 @@ public sealed class SettingsService
         try
         {
             var settings = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(configPath), JsonOptions);
+            if (settings is not null && AnimationCatalog.FindCharacter(settings.CharacterId) is null)
+                settings.CharacterId = AnimationCatalog.DefaultCharacterId;
             return settings is not null && TryValidate(settings, out _)
                 ? settings
                 : AppSettings.CreateDefault();

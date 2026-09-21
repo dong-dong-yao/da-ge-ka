@@ -1,8 +1,8 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <Version>1.1.0</Version>
+    <Version>1.2.0-preview.7</Version>
     <TargetFramework>net10.0-windows</TargetFramework>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
@@ -21,10 +21,18 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Assets\Dagaka.ico" LogicalName="CheckInReminder.Dagaka.ico" />
     <EmbeddedResource Include="Assets\Animations\**\*.png" />
     <EmbeddedResource Include="Assets\DesktopPet\**\*.jpg" />
     <EmbeddedResource Include="Assets\DesktopPet\**\*.png" />
+    <EmbeddedResource Include="Assets\MediaTools\tools.zip" LogicalName="CheckInReminder.MediaTools.zip" Condition="Exists('Assets\MediaTools\tools.zip')" />
+    <EmbeddedResource Include="Assets\CreationGuide\pose-reference.jpg" LogicalName="CheckInReminder.CreationGuide.pose-reference.jpg" />
+    <EmbeddedResource Include="Assets\CreationGuide\three-view-example.png" LogicalName="CheckInReminder.CreationGuide.three-view-example.png" />
     <EmbeddedResource Include="..\THIRD_PARTY_NOTICES.md" LogicalName="CheckInReminder.THIRD_PARTY_NOTICES.md" />
   </ItemGroup>
+
+  <Target Name="RequireBundledMediaToolsForPublish" BeforeTargets="Publish">
+    <Error Condition="!Exists('Assets\MediaTools\tools.zip')" Text="完整发行版必须包含本地视频处理组件，请先运行 tools/pack-media-tools.ps1。" />
+  </Target>
 
 </Project>

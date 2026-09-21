@@ -34,6 +34,7 @@ public sealed class DesktopPetController : IDisposable
     private DesktopPetRigPose lastPose = DesktopPetRigPose.Rest;
     private WhiteBearRigRenderer? rigRenderer;
     private DesktopPetSpriteSet? spriteSet;
+    private CustomPetRenderer? customRenderer;
     private AnimationSequence? idleSequence;
     private AnimationSequence? tapSequence;
     private AnimationTimeline? idleTimeline;
@@ -84,7 +85,12 @@ public sealed class DesktopPetController : IDisposable
         staticFallback = false;
         _ = TakePulses();
 
-        if (string.Equals(character.Id, AnimationCatalog.DefaultCharacterId, StringComparison.Ordinal))
+        if (character.CustomPackagePath is not null && character.HasPetAssets)
+        {
+            customRenderer = new CustomPetRenderer(Path.Combine(character.CustomPackagePath, "pet"), character.CustomManifest?.Mouse, character.CustomManifest?.UsesTemplateMouse == true, character.CustomManifest?.MouseCalibrations);
+            PresentOwnedFrame(customRenderer.Render(DesktopPetRigPose.Rest));
+        }
+        else if (string.Equals(character.Id, AnimationCatalog.DefaultCharacterId, StringComparison.Ordinal))
         {
             LoadWhiteBear();
         }
@@ -254,7 +260,12 @@ public sealed class DesktopPetController : IDisposable
                 : Screen.PrimaryScreen?.WorkingArea ?? Rectangle.Empty;
             var pulses = TakePulses(snapshot);
             var pose = motion.Step(snapshot, area, elapsed, pulses.Keyboard, pulses.Left, pulses.Right);
-            if (rigRenderer is not null)
+            if (customRenderer is not null)
+            {
+                if (snapshot.Version != lastVersion || pose != lastPose)
+                    PresentOwnedFrame(customRenderer.Render(pose));
+            }
+            else if (rigRenderer is not null)
             {
                 if (snapshot.Version != lastVersion || !lastPose.IsAtRest || !pose.IsAtRest)
                     PresentOwnedFrame(rigRenderer.Render(ToRenderPose(pose)));
@@ -372,6 +383,8 @@ public sealed class DesktopPetController : IDisposable
         rigRenderer = null;
         spriteSet?.Dispose();
         spriteSet = null;
+        customRenderer?.Dispose();
+        customRenderer = null;
         idleSequence?.Dispose();
         tapSequence?.Dispose();
         idleSequence = null;

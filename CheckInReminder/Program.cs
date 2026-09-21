@@ -14,6 +14,7 @@ static class Program
         }
 
         ApplicationConfiguration.Initialize();
+        AnimationCatalog.RefreshCustomCharacters();
         Application.Run(new ReminderApplicationContext());
     }
 }

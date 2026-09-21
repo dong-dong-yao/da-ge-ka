@@ -12,6 +12,8 @@ public sealed record ReminderCharacter(
     TimeSpan Duration,
     bool Loop)
 {
+    public string? CustomPackagePath { get; init; }
+    public CustomCharacterManifest? CustomManifest { get; init; }
     private static readonly IReadOnlyList<ScreenEdge> EveryEdge = Array.AsReadOnly(
         new[] { ScreenEdge.Left, ScreenEdge.Top, ScreenEdge.Right, ScreenEdge.Bottom });
 

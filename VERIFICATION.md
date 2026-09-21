@@ -1,4 +1,6 @@
-# 打个卡 v1.1.0 验收记录
+# 打个卡 v1.1.0 历史验收记录
+
+此文只记录 v1.1.0。当前 v1.2.0-preview.7 的试用验证见 [preview.7 记录](docs/verification-creator-preview7.md)，功能与构建说明以 [README](README.md) 为准。
 
 日期：2026-09-12
 

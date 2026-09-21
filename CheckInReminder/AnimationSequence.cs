@@ -16,6 +16,23 @@ internal sealed class AnimationSequence : IDisposable
 
     public static AnimationSequence Load(string sequenceName, TimeSpan duration, bool loop)
     {
+        if (Path.IsPathFullyQualified(sequenceName))
+        {
+            var files = Directory.GetFiles(sequenceName, "frame_*.png").Order(StringComparer.Ordinal).ToArray();
+            if (files.Length is < 1 or > 180) throw new InvalidDataException("角色动画帧数无效。");
+            var diskFrames = new List<Bitmap>();
+            try
+            {
+                foreach (var file in files)
+                {
+                    CustomCharacterStore.ValidateImage(file, 520);
+                    using var image = Image.FromFile(file);
+                    diskFrames.Add(new Bitmap(image));
+                }
+                return new AnimationSequence(diskFrames, duration, loop);
+            }
+            catch { foreach (var frame in diskFrames) frame.Dispose(); throw; }
+        }
         var assembly = Assembly.GetExecutingAssembly();
         var resourceSequenceName = sequenceName.Replace('-', '_');
         var prefix = $"CheckInReminder.Assets.Animations.{resourceSequenceName}.frame_";

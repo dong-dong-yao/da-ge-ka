@@ -21,14 +21,20 @@ internal sealed class AnimatedReminderSession : IDisposable
         this.completed = completed;
         var reminderCharacter = AnimationCatalog.FindCharacter(characterId) ??
             AnimationCatalog.FindCharacter(AnimationCatalog.DefaultCharacterId)!;
-        sequence = AnimationSequence.Load(
-            reminderCharacter.SequenceName,
-            reminderCharacter.Duration,
-            reminderCharacter.Loop);
         var edge = ReminderEdgeSelector.Select(reminderCharacter, Random.Shared);
+        var sequenceName = reminderCharacter.SequenceName;
+        var duration = reminderCharacter.Duration;
+        var sourceEdge = reminderCharacter.SourceEdge;
+        if (reminderCharacter.CustomManifest?.Directions.TryGetValue(edge, out var direction) == true)
+        {
+            sequenceName = Path.Combine(reminderCharacter.CustomPackagePath!, "direction-" + edge);
+            duration = TimeSpan.FromSeconds(direction.DurationSeconds);
+            sourceEdge = edge;
+        }
+        sequence = AnimationSequence.Load(sequenceName, duration, reminderCharacter.Loop);
         character = new LayeredAnimationForm(
             sequence.Frames[0].Size,
-            reminderCharacter.SourceEdge,
+            sourceEdge,
             edge,
             CharacterScale);
         bubble = new ReminderBubbleForm(kind, () => Finish(clicked: true));

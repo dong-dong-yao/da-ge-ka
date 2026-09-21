@@ -12,4 +12,5 @@ release/
 .worktrees/
 .superpowers/
 artifacts/
+CheckInReminder/Assets/MediaTools/tools.zip
 docs/*交接*.md

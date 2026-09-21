@@ -31,7 +31,7 @@ dotnet publish .\CheckInReminder\CheckInReminder.csproj -c Release -r win-x64 --
 - 不运行无人值守的真实关机或重启测试。
 - 新增角色只需：`Assets/Animations/{角色Id}/` 放帧序列（`frame_0000.png` 起），在 `AnimationCatalog.BuildCharacters()` 注册一行；桌面宠物素材目录约定为 `{角色Id}-pet-idle` / `{角色Id}-pet-tap`（可选，缺失时自动降级为占位帧）。详细 SOP 见 README。
 
-## 当前状态（2026-09-12）
+## 当前状态（2026-09-21）
 
-v1.1.0 包含桌宠修复、角色画廊、设置页及 DPI 尺寸修复。现役机制与素材约定见 README，验证边界见 VERIFICATION.md。
-本机开发入口仍为 `.worktrees/bongocat-rig`；根目录保留旧分支和宣传素材，勿当作最新源码使用。保留有效工作树、`.dotnet` SDK、原始素材和回退版；仅清理确认可重建的产物。GitHub 发布源码使用 `main`，可执行文件放 Release，不提交进 Git。
+当前源码版本为 v1.2.0-preview.7，加入软件内创建角色，并修复方向视频展开后的滚动。功能和构建边界见 README，试用验证见 `docs/verification-creator-preview7.md`；VERIFICATION.md 是 v1.1.0 的历史验收。
+本机开发入口仍为 `.worktrees/bongocat-rig`；根目录保留旧分支和宣传素材，勿当作最新源码使用。保留有效工作树、`.dotnet` SDK、原始素材和回退版；仅清理确认可重建的产物。GitHub 源码使用 `main`；完整试用 EXE 在本机 `release/`，源码仓库不含视频组件 ZIP，GitHub Actions 不自动发布完整 EXE。

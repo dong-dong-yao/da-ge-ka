@@ -11,6 +11,15 @@ public static class AnimationCatalog
     public static bool GateLoops => true;
 
     public static IReadOnlyList<ReminderCharacter> Characters { get; } = BuildCharacters();
+    public static IReadOnlyList<ReminderCharacter> AllCharacters { get; private set; } = Characters;
+    public static IReadOnlyList<string> CustomLoadErrors { get; private set; } = [];
+
+    public static void RefreshCustomCharacters()
+    {
+        var store = new CustomCharacterStore();
+        AllCharacters = Characters.Concat(store.Load()).ToArray();
+        CustomLoadErrors = store.Errors.ToArray();
+    }
 
     // 新增角色只需在此注册一行（素材放入 Assets/Animations/{角色Id}/ 目录）：
     // new("shiba", "柴犬", "shiba", TimeSpan.FromSeconds(7.1), false),
@@ -59,6 +68,6 @@ public static class AnimationCatalog
         DesktopPetSpriteSet.HasResources(characterId);
 
     public static ReminderCharacter? FindCharacter(string? id) =>
-        Characters.FirstOrDefault(character =>
+        AllCharacters.FirstOrDefault(character =>
             string.Equals(character.Id, id, StringComparison.Ordinal));
 }

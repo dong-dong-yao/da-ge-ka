@@ -2,7 +2,7 @@ using System.Globalization;
 
 namespace CheckInReminder;
 
-internal sealed class SettingsForm : Form
+internal sealed class SettingsForm : BrandedForm
 {
     private const int SideNavWidth = 148;
     private readonly SoftTimePicker morningStartPicker;
@@ -30,6 +30,7 @@ internal sealed class SettingsForm : Form
     private readonly Action testReminder;
     private bool isInteractiveResize;
     private bool isScrollSettling;
+    public event EventHandler<string>? CharacterDeleted;
 
     public SettingsForm(AppSettings settings, Func<AppSettings, string?> saveSettings, Action testReminder)
     {
@@ -85,6 +86,7 @@ internal sealed class SettingsForm : Form
             Visible = false,
         };
         charactersPage.CharacterConfirmed += (_, characterId) => currentCharacterPreview.SetCharacter(characterId);
+        charactersPage.CharacterDeleted += (_, characterId) => CharacterDeleted?.Invoke(this, characterId);
 
         var morningCard = CreateSettingsCard(
             IconBadge.IconKind.Sun,

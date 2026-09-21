@@ -16,6 +16,8 @@ internal sealed class AnimationPreviewPlayer : IDisposable
     private int currentFrame = -1;
     private bool paused;
     private int posterFrame;
+    private ReminderCharacter? customCharacter;
+    private Bitmap? customPoster;
 
     public AnimationPreviewPlayer(PictureBox pictureBox, int intervalMilliseconds = 33)
     {
@@ -24,7 +26,7 @@ internal sealed class AnimationPreviewPlayer : IDisposable
         timer.Tick += (_, _) => Advance();
     }
 
-    public bool IsLoaded => sequence is not null;
+    public bool IsLoaded => sequence is not null || customPoster is not null;
 
     /// <summary>加载角色提醒动画并循环播放（除非处于暂停状态）。</summary>
     public void Load(ReminderCharacter character)
@@ -33,6 +35,20 @@ internal sealed class AnimationPreviewPlayer : IDisposable
         clock.Stop();
         pictureBox.Image = null;
         sequence?.Dispose();
+        sequence = null;
+        customPoster?.Dispose(); customPoster = null;
+        customCharacter = character.CustomPackagePath is null ? null : character;
+        if (customCharacter is not null)
+        {
+            var posterFile = Path.Combine(character.CustomPackagePath!, "preview.png");
+            if (!File.Exists(posterFile)) posterFile = Path.Combine(character.SequenceName, $"frame_{(character.CustomManifest?.FrameCount ?? 1) / 2:0000}.png");
+            CustomCharacterStore.ValidateImage(posterFile, 520);
+            customPoster = CharacterMediaProcessor.ReadBitmap(posterFile);
+            if (pictureBox is CharacterPreviewImage customPreview) customPreview.SourceBounds = new Rectangle(Point.Empty, customPoster.Size);
+            pictureBox.Image = customPoster;
+            if (!paused) LoadCustomSequence();
+            return;
+        }
         sequence = AnimationSequence.Load(character.SequenceName, character.Duration, character.Loop);
         timeline = new AnimationTimeline(sequence.Frames.Count, character.Duration, loop: true);
         posterFrame = FindPosterFrame(sequence.Frames, out var subjectBounds);
@@ -53,6 +69,12 @@ internal sealed class AnimationPreviewPlayer : IDisposable
     /// <summary>展示角色充分入场后的封面；恢复播放仍从动画起点开始。</summary>
     public void ShowPosterFrame()
     {
+        if (customPoster is not null)
+        {
+            timer.Stop(); clock.Stop(); pictureBox.Image = customPoster;
+            sequence?.Dispose(); sequence = null;
+            return;
+        }
         if (sequence is null)
         {
             return;
@@ -118,14 +140,24 @@ internal sealed class AnimationPreviewPlayer : IDisposable
         {
             timer.Stop();
             clock.Stop();
+            if (customPoster is not null) ShowPosterFrame();
             return;
         }
 
+        if (customCharacter is not null && sequence is null) LoadCustomSequence();
         if (sequence is not null)
         {
             clock.Start();
             timer.Start();
         }
+    }
+
+    private void LoadCustomSequence()
+    {
+        var character = customCharacter!;
+        sequence = AnimationSequence.Load(character.SequenceName, character.Duration, false);
+        timeline = new AnimationTimeline(sequence.Frames.Count, character.Duration, true);
+        currentFrame = -1; clock.Restart(); timer.Start();
     }
 
     private void Advance()
@@ -151,6 +183,7 @@ internal sealed class AnimationPreviewPlayer : IDisposable
         timer.Dispose();
         pictureBox.Image = null;
         sequence?.Dispose();
+        customPoster?.Dispose();
         clock.Stop();
     }
 }

@@ -74,7 +74,7 @@ internal sealed class CharacterCardControl : UserControl
             confirmed ? UiTheme.AccentColor : UiTheme.MutedTextColor, textFlags);
         TextRenderer.DrawText(g, Character.DisplayName, nameFont,
             new Rectangle(S(17), Height - S(52), Math.Max(1, Width - S(119)), S(25)), UiTheme.TextColor, textFlags);
-        TextRenderer.DrawText(g, "提醒伙伴", detailFont,
+        TextRenderer.DrawText(g, Character.CustomPackagePath is null ? "提醒伙伴" : Character.HasPetAssets ? "自定义 · 桌面互动" : "自定义 · 仅提醒", detailFont,
             new Rectangle(S(17), Height - S(28), Width - S(119), S(17)), UiTheme.MutedTextColor, textFlags);
     }
 

@@ -21,12 +21,24 @@ internal static class Program
         }
         var output = Path.GetFullPath(args[0]);
         Directory.CreateDirectory(output);
+        if (args.Contains("--selection")) return SelectionProbe.Run(output, args[^1]);
+        if (args.Contains("--mouse-diagnosis")) return MouseDiagnosis.Run(output, args[^1]);
+        if (args.Contains("--creator")) return CreatorProbe.Run(output);
         var settings = AppSettings.CreateDefault();
         settings.BreakReminderEnabled = true;
         using var form = new SettingsForm(settings, _ => null, () => { });
         form.StartPosition = FormStartPosition.Manual;
         form.Location = new Point(-20000, -20000);
         form.Show();
+        if (args.Contains("--gallery"))
+        {
+            typeof(SettingsForm).GetMethod("ShowPage", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(form, ["characters"]);
+            Application.DoEvents();
+            using var capture = new Bitmap(form.Width, form.Height); form.DrawToBitmap(capture, new Rectangle(Point.Empty, capture.Size));
+            capture.Save(Path.Combine(output, "gallery.png"));
+            if (form.ShowInTaskbar || form.Icon is null) throw new Exception("Settings branding contract");
+            return 0;
+        }
         var page = Descendants(form).OfType<BufferedScrollPanel>().Single();
         Descendants(form).OfType<CurrentCharacterPreviewControl>().Single().SetInteractionPaused(true);
         using var bitmap = new Bitmap(form.Width, form.Height);

@@ -155,6 +155,16 @@ internal sealed class ReminderApplicationContext : ApplicationContext
         }
 
         settingsForm = new SettingsForm(settings.Clone(), SaveSettings, () => RequestReminder(ReminderKind.Test));
+        settingsForm.CharacterDeleted += (_, id) =>
+        {
+            if (settings.CharacterId != id) return;
+            settings.CharacterId = AnimationCatalog.DefaultCharacterId;
+            try { settingsService.Save(settings); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            { notifyIcon.ShowBalloonTip(4000, UiTheme.ProductName, $"角色已删除并回退白熊，配置暂未写入：{error.Message}", ToolTipIcon.Warning); }
+            ApplyDesktopPet(settings.DesktopPetEnabled);
+            LoadDesktopPetCharacter();
+        };
         settingsForm.FormClosed += (_, _) => settingsForm = null;
         settingsForm.Show();
         settingsForm.Activate();
@@ -226,6 +236,21 @@ internal sealed class ReminderApplicationContext : ApplicationContext
 
     private void ApplyDesktopPet(bool enabled)
     {
+        var selected = AnimationCatalog.FindCharacter(settings.CharacterId);
+        if (selected?.CustomPackagePath is not null && !selected.HasPetAssets)
+        {
+            DisposeDesktopPet();
+            if (adjustPetPositionItem is not null) adjustPetPositionItem.Enabled = false;
+            if (desktopPetItem is not null)
+            {
+                desktopPetItem.Text = "桌面宠物（此角色仅支持提醒）";
+                updatingPetMenuItem = true;
+                desktopPetItem.Checked = settings.DesktopPetEnabled;
+                updatingPetMenuItem = false;
+            }
+            return;
+        }
+        if (desktopPetItem is not null) desktopPetItem.Text = "桌面宠物";
         if (desktopPetItem is not null && desktopPetItem.Checked != enabled)
         {
             updatingPetMenuItem = true;
