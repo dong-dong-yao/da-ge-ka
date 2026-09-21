@@ -21,6 +21,18 @@ internal static class Program
         }
         var output = Path.GetFullPath(args[0]);
         Directory.CreateDirectory(output);
+        if (args.Contains("--notices"))
+        {
+            using var notices = new ThirdPartyNoticesForm();
+            notices.StartPosition = FormStartPosition.Manual;
+            notices.Location = new Point(-20000, -20000);
+            notices.Show();
+            Application.DoEvents();
+            using var capture = new Bitmap(notices.Width, notices.Height);
+            notices.DrawToBitmap(capture, new Rectangle(Point.Empty, capture.Size));
+            capture.Save(Path.Combine(output, "usage-notice.png"));
+            return notices.Controls.OfType<TextBox>().Single().Text.Contains("使用声明与免责声明") && !notices.ShowInTaskbar ? 0 : 1;
+        }
         if (args.Contains("--selection")) return SelectionProbe.Run(output, args[^1]);
         if (args.Contains("--mouse-diagnosis")) return MouseDiagnosis.Run(output, args[^1]);
         if (args.Contains("--creator")) return CreatorProbe.Run(output);

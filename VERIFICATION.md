@@ -1,18 +1,19 @@
 # 打个卡最终验收与维护说明
 
-当前源码与本地试用版本：`1.2.0-preview.7`。收尾日期：2026-09-21。
+当前正式版本：`1.2.0`。收尾日期：2026-09-21。
 
 ## 当前交付
 
 - GitHub `main` 保存角色创建、分步素材教程、鼠标手臂校准、点选鼠标垫、放大镜与创建界面修复。
-- 完整程序位于本机 `release/v1.2.0-preview.7/DaGeKa-v1.2.0-preview.7-win-x64.exe`；Windows x64、自包含、单文件、禁止 trimming，包含离线视频组件。
-- EXE SHA256：`C0EFD146CEB8AEB59808904301FD8BFE0A6BA65C89E7E1C22A3830538717FEC3`。
-- GitHub Release 的正式下载与源码更新独立；本次没有创建新 Release。v1.1.0 正式版保留作回退。
+- 完整程序位于本机 `release/v1.2.0/DaGeKa-v1.2.0-win-x64.exe`；Windows x64、自包含、单文件、禁止 trimming，包含离线视频组件。
+- EXE SHA256：`BDE80564FD793C02745A436B94001E66AF83D3CF0AA35B6754EC4BB05BBDD942`。
+- 正式下载入口：[最新版](https://github.com/dong-dong-yao/da-ge-ka/releases/latest)。对应版本页：[v1.2.0](https://github.com/dong-dong-yao/da-ge-ka/releases/tag/v1.2.0)。v1.1.0 保留作回退。
 
 ## 验证结果
 
-- 2026-09-21 Release 全量测试：263 通过、0 失败、0 跳过，耗时2分3秒，包含完整视频组件的媒体集成测试。
-- 最终记录：主仓库 `release/verification-preview7/final-tests/final.trx` 和 `final-tests.log`。
+- 2026-09-21 Release 全量测试：264 通过、0 失败、0 跳过，耗时4分14秒，包含完整视频组件的媒体集成测试。
+- 最终记录：主仓库 `release/verification-v1.2.0/tests/final.trx` 和 `tests.log`。
+- 使用声明入口与嵌入文本新增回归；全量测试后仅修正窗口换行与初始全选，最终3项声明回归通过，记录为 `tests/notices-final.trx`。已核对正式 EXE 文件版本1.2.0.0、产品版本1.2.0。
 - 创建向导探针覆盖四页截图、方向上传展开后无需调整窗口即可滚到底，以及40轮展开/收起/缩放。preview.6 同时检查正式系统 DPI 与96 DPI；preview.7 专门复查立即滚动。
 - 鼠标回归覆盖连续灰垫识别、不同姿势垫面偏移、无效点击保护、肩部固定、键盘不动、分层存储重载及失败回滚。修复窗检查工具排列、底部操作栏与涂抹放大镜。
 - 界面证据保留在 `release/verification-preview6/` 与 `release/verification-preview7/`，不提交截图或测试 EXE 到源码仓库。
@@ -27,7 +28,7 @@ dotnet test CheckInReminder.slnx -c Release
 dotnet build CheckInReminder.slnx -c Release
 ```
 
-源码不包含视频组件 ZIP，普通构建可以运行，媒体集成测试会明确跳过；完整发布前按 README 打包组件。GitHub Actions 只验证源码测试与构建，不代表完整 EXE 已发布。
+源码不包含视频组件 ZIP，普通构建可以运行，媒体集成测试会明确跳过；完整发布前从 Release 获取组件 ZIP，或按 README 打包组件。GitHub Actions 只验证源码测试与构建；发布还需上传完整 EXE、设为 latest，并从公开下载地址回下载核对 SHA256。
 
 ## 保留边界
 

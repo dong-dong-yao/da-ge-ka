@@ -33,5 +33,6 @@ dotnet publish .\CheckInReminder\CheckInReminder.csproj -c Release -r win-x64 --
 
 ## 当前状态（2026-09-21）
 
-当前源码版本为 v1.2.0-preview.7，开发阶段结束，后续按 GitHub Issue 反馈维护。功能和构建边界见 README，最终验收与保留边界见 VERIFICATION.md。
-本机开发入口仍为 `.worktrees/bongocat-rig`；根目录保留旧分支和宣传素材，勿当作最新源码使用。保留有效工作树、`.dotnet` SDK、原始素材和回退版；仅清理确认可重建的产物。GitHub 源码使用 `main`；完整试用 EXE 在本机 `release/`，源码仓库不含视频组件 ZIP，GitHub Actions 不自动发布完整 EXE。
+当前版本为 v1.2.0，后续按 GitHub Issue 反馈维护。功能和构建边界见 README，最终验收与发布状态见 VERIFICATION.md。
+本机开发入口仍为 `.worktrees/bongocat-rig`；根目录保留旧分支和宣传素材，勿当作最新源码使用。保留有效工作树、`.dotnet` SDK、原始素材和回退版。源码仓库不含视频组件 ZIP，完整组件随 Release 提供，GitHub Actions 不自动发布完整 EXE。
+发布必须同时完成：更新版本与文档、测试、构建完整 EXE、上传非预发布 GitHub Release 并设为 latest、从公开下载入口回下载并核对 SHA256。只推送 main 不算面向用户发布完成。使用声明与组件许可统一维护于 THIRD_PARTY_NOTICES.md，随 EXE 嵌入。

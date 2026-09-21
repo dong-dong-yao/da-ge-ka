@@ -1,12 +1,26 @@
-# Third-party notices
+# 使用声明与第三方许可
 
-## FFmpeg（本地角色创建试用构建）
+## 使用声明与免责声明
+
+“打个卡”是免费提供的个人开源提醒工具，用于桌面陪伴与时间提醒；开发者不以销售本软件中的角色素材获利。免费、非盈利或学习交流不等于取得第三方素材授权，也不当然免除依法应承担的责任。
+
+程序代码的 MIT 许可证不覆盖角色形象、动画、图片、商标和其他第三方素材。这些素材的权利归各自合法权利人所有；展示素材不表示相关权利人对本项目的授权、合作或背书，也不向使用者授予其原本未拥有的素材权利。公开传播、改编或商用前，请自行确认相应授权。
+
+自定义角色由使用者自行准备和导入。请仅使用原创或已经取得相应用途授权的素材，不要侵犯他人的著作权、商标权、肖像权或隐私。外部生图、视频模型的生成结果也不保证没有权利瑕疵，需遵守相应服务条款和法律规定。软件本身不调用这些模型，也不上传导入的素材。
+
+如果你认为内置或示例素材涉及你的合法权益，请通过 https://github.com/dong-dong-yao/da-ge-ka/issues 联系维护者，提供具体素材位置、权利证明和处理诉求。维护者将核查，并根据核查结果采取补充署名、替换或移除等措施；请勿在公开 Issue 中提交敏感个人信息。
+
+软件仅作提醒辅助，不会代替你完成考勤，提醒结果不作为考勤或劳动关系证明。请以单位的正式制度和考勤系统为准，并及时保存正在编辑的工作。
+
+在适用法律允许的范围内，本软件按“现状”提供，不保证适合所有用途、持续可用或完全没有错误；开发者不对因使用或无法使用本软件导致的损失作超出法律规定的担保。此声明不排除或限制法律规定不得排除或限制的责任，也不减损使用者依法享有的权利；存在冲突时以适用法律为准。
+
+## FFmpeg（离线视频组件）
 
 自定义角色导入通过独立 FFmpeg / ffprobe 子进程处理本地文件，不调用网络服务。
-当前本地试用组件版本：N-125972-ge13b2e00e8-20260805，win64 GPL shared 构建，配置包含 `--enable-gpl --enable-version3`，不包含 `--enable-nonfree`。
-构建信息保存在 `CheckInReminder/Assets/MediaTools/build-info.txt`，构建随附许可全文在 `LICENSE-FFmpeg.txt`，也可在软件的第三方许可窗口查看。
-组件原始 ZIP 为开发者本机 `ffmpeg-master-latest-win64-gpl-shared.zip`；仓库不提交可执行组件。完整试用版嵌入压缩组件，首次使用解压到用户数据目录。
-本次只生成本地试用程序，未上传或发布新 Release。
+组件版本：N-125972-ge13b2e00e8-20260805，win64 GPL shared 构建，配置包含 `--enable-gpl --enable-version3`，不包含 `--enable-nonfree`。FFmpeg 组件及其依赖遵循各自许可证，不适用本项目代码的 MIT 许可证。
+构建信息保存在 `CheckInReminder/Assets/MediaTools/build-info.txt`，构建随附许可全文在 `LICENSE-FFmpeg.txt`，下文也保留完整 GPLv3 文本。
+原始构建提供方：https://github.com/BtbN/FFmpeg-Builds 。组件原始文件名为 `ffmpeg-master-latest-win64-gpl-shared.zip`，程序未修改这些可执行组件，只重新打包 ffmpeg、ffprobe 和配套 DLL，首次使用解压到用户数据目录。
+FFmpeg 对应源码提交：https://github.com/FFmpeg/FFmpeg/tree/e13b2e00e89dc8cdbb05cca7c22ebbbf8d9fd171 。v1.2.0 Release 同时提供该 FFmpeg 源码归档和用于复现本程序打包的媒体组件 ZIP；构建脚本及第三方依赖来源见上游构建仓库。以上源码链接不表示角色素材获得授权。
 
 ## ayangweb/BongoCat
 

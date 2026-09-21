@@ -75,7 +75,7 @@ internal sealed class ReminderApplicationContext : ApplicationContext
             Padding = new Padding(16, 7, 24, 7),
         };
         exitItem.Click += (_, _) => ExitApplication();
-        var noticesItem = new ToolStripMenuItem("第三方许可")
+        var noticesItem = new ToolStripMenuItem("使用声明与许可")
         {
             Padding = new Padding(16, 7, 24, 7),
         };

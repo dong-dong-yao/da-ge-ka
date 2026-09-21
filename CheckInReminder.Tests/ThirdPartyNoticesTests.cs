@@ -6,6 +6,19 @@ namespace CheckInReminder.Tests;
 public sealed class ThirdPartyNoticesTests
 {
     [TestMethod]
+    public void EmbeddedNotice_ExplainsMaterialRightsAndLegalLimits()
+    {
+        using var stream = typeof(AppSettings).Assembly.GetManifestResourceStream("CheckInReminder.THIRD_PARTY_NOTICES.md")!;
+        using var reader = new StreamReader(stream);
+        var text = reader.ReadToEnd();
+        StringAssert.Contains(text, "使用声明与免责声明");
+        StringAssert.Contains(text, "免费提供");
+        StringAssert.Contains(text, "不等于取得第三方素材授权");
+        StringAssert.Contains(text, "不得排除或限制的责任");
+        StringAssert.Contains(text, "https://github.com/dong-dong-yao/da-ge-ka/issues");
+    }
+
+    [TestMethod]
     public void ApplicationAssembly_CarriesBongoCatAttributionAndFullMitPermission()
     {
         var assembly = typeof(AppSettings).Assembly;
