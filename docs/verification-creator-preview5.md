@@ -1,3 +1,5 @@
+> 历史阶段记录：可能包含已被后续版本替代的界面、限制和路径。当前使用与验收以 [README](../README.md) 和 [VERIFICATION](../VERIFICATION.md) 为准。
+
 # 创建角色向导与鼠标选区 · preview.5
 
 ## 交付范围

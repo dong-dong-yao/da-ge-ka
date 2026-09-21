@@ -33,5 +33,5 @@ dotnet publish .\CheckInReminder\CheckInReminder.csproj -c Release -r win-x64 --
 
 ## 当前状态（2026-09-21）
 
-当前源码版本为 v1.2.0-preview.7，加入软件内创建角色，并修复方向视频展开后的滚动。功能和构建边界见 README，试用验证见 `docs/verification-creator-preview7.md`；VERIFICATION.md 是 v1.1.0 的历史验收。
+当前源码版本为 v1.2.0-preview.7，开发阶段结束，后续按 GitHub Issue 反馈维护。功能和构建边界见 README，最终验收与保留边界见 VERIFICATION.md。
 本机开发入口仍为 `.worktrees/bongocat-rig`；根目录保留旧分支和宣传素材，勿当作最新源码使用。保留有效工作树、`.dotnet` SDK、原始素材和回退版；仅清理确认可重建的产物。GitHub 源码使用 `main`；完整试用 EXE 在本机 `release/`，源码仓库不含视频组件 ZIP，GitHub Actions 不自动发布完整 EXE。

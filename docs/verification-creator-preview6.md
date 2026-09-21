@@ -1,3 +1,5 @@
+> 历史阶段记录：可能包含已被后续版本替代的界面、限制和路径。当前使用与验收以 [README](../README.md) 和 [VERIFICATION](../VERIFICATION.md) 为准。
+
 # preview.6：创建界面修订与鼠标垫识别
 
 ## 修订
