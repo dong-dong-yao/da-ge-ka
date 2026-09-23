@@ -8,6 +8,7 @@
 - 完整程序位于本机 `release/v1.2.0/DaGeKa-v1.2.0-win-x64.exe`；Windows x64、自包含、单文件、禁止 trimming，包含离线视频组件。
 - EXE SHA256：`BDE80564FD793C02745A436B94001E66AF83D3CF0AA35B6754EC4BB05BBDD942`。
 - 正式下载入口：[最新版](https://github.com/dong-dong-yao/da-ge-ka/releases/latest)。对应版本页：[v1.2.0](https://github.com/dong-dong-yao/da-ge-ka/releases/tag/v1.2.0)。v1.1.0 保留作回退。
+- 公开下载入口已回下载核对：HTTP 200、250636430 字节，SHA256 与上方正式 EXE 相同；记录见主仓库 `release/verification-v1.2.0/public-download-verification.json`。
 
 ## 验证结果
 
@@ -36,4 +37,4 @@ dotnet build CheckInReminder.slnx -c Release
 
 实际 Windows 全局输入钩子、鼠标穿透、开机启动、跨屏 DPI、锁屏恢复和关机拦截仍属于实机人工验收范围；没有运行无人值守的真实关机或重启。没有修改用户角色包、提醒设置或开机启动项。
 
-开发阶段结束，后续按 GitHub Issue 反馈维护。本机有效源码仍在 `.worktrees/bongocat-rig`，根目录旧分支不作为现役源码。保留 SDK、原始素材、视频组件、宣传工程、正式版和最终试用版；构建缓存可按上述命令重新生成。
+开发阶段结束，后续按 GitHub Issue 反馈维护。本机有效源码仍在 `.worktrees/bongocat-rig`，根目录旧分支不作为现役源码。保留 SDK、原始素材、视频组件、宣传工程、v1.2.0 正式版、v1.1.0 回退版和最终验证证据；构建缓存可按上述命令重新生成。
